@@ -1,0 +1,69 @@
+# MaxIM Protocol Command Matrix
+
+Status Legend:
+- 🟢 Verified: Confirmed via network captures and binary analysis.
+- 🟡 Identified: Found in binary / decompilation; parameters or behavior partially mapped or infered.
+- 🔴 Unmapped: String identified. Syntax, direction, or role unconfirmed.
+
+| Command           |   Dir   | Identified Arguments              | Expected Response(s)                     | Status | Spec Sheet |
+|:------------------|:-------:|:----------------------------------|:-----------------------------------------|:------:|:-----------|
+| `CLIENT_PROTOCOL` | C -> S  | `<version:int>`                   | (None?)                                  |   🟡   | TODO       |
+| `CLIENT_TYPE`     | C -> S  | `<platform:str> ID=<id:hex>`      | (None?)                                  |   🟡   | TODO       |
+| `LOGIN`           | C -> S  | `<user:str> <pass:str>`           | `LOGIN_OK`, `LOGIN_FAILED`               |   🟢   | TODO       |
+| `REGISTER`        | C -> S  | (profile info, see below)         | `REGISTER_OK`, `REGISTER_FAILED`         |   🟢   | TODO       |
+| `QUIT`            | C -> S  | (None)                            | (TCP Disconnect?)                        |   🟡   | TODO       |
+| `CHAT`            | C -> S  | (None)                            | (Several `CHANNEL_ADDED` if first time?) |   🟡   | TODO       |
+| `FORUMS`          | C -> S  | (None)                            | (Forum hierarchy / category list?)       |   🟡   | TODO       |
+| `JOIN`            | C -> S  | `<room:str>`                      | `?`                                      |   🟢   | TODO       |
+| `SAY`             | C -> S  | `<message:str>`                   | `USER_MSG`                               |   🟢   | TODO       |
+| `MSG`             | C -> S  | `<user:str> <msg:str>`            | `?`                                      |   🟡   | TODO       |
+| `CREATE`          | C -> S  | `<room:str>`                      | `CHANNEL_ADDED`                          |   🟢   | TODO       |
+| `WHOIS`           | C -> S  | `<user:str>`                      | `USER_DETAILS`?                          |   🟡   | TODO       |
+| `REPORT`          | C -> S  | `<user:str>`                      | `?`                                      |   🟡   | TODO       |
+| `IGNORE ADD`      | C -> S  | `<user:str>`                      | `IGNORE_ADD`                             |   🟢   | TODO       |
+| `IGNORE REMOVE`   | C -> S  | `<user:str>`                      | `IGNORE_DEL`                             |   🟢   | TODO       |
+| `BUDDY ADD`       | C -> S  | `<user:str>`                      | `BUDDY_ADD`                              |   🟢   | TODO       |
+| `BUDDY REMOVE`    | C -> S  | `<user:str>`                      | `BUDDY_DEL`                              |   🟢   | TODO       |
+| `LOGIN_OK`        | S -> C  | (None)                            | (None)                                   |   🟢   | TODO       |
+| `LOGIN_FAIL`      | S -> C  | `<reason:str>`                    | (None)                                   |   🟢   | TODO       |
+| `REGISTER_OK`     | S -> C  | (None)                            | (None)                                   |   🟢   | TODO       |
+| `REGISTER_FAIL`   | S -> C  | `<reason:str>`                    | (None)                                   |   🟢   | TODO       |
+| `CHANNEL_ADDED`   | S -> C  | `<room:str>`                      | (None)                                   |   🟢   | TODO       |
+| `CHANNEL_REMOVED` | S -> C  | `<room:str>`                      | (None)                                   |   🟢   | TODO       |
+| `IGNORE_ADD`      | S -> C  | `<user:str>`                      | (None)                                   |   🟢   | TODO       |
+| `IGNORE_DEL`      | S -> C  | `<user:str>`                      | (None)                                   |   🟢   | TODO       |
+| `IGNORE_LIST`     | S -> C  | `<users:space separated list>...` | (None)                                   |   🟢   | TODO       |
+| `BUDDY_ADD`       | S -> C  | `<user:str>`                      | (None)                                   |   🟢   | TODO       |
+| `BUDDY_DEL`       | S -> C  | `<user:str>`                      | (None)                                   |   🟢   | TODO       |
+| `BUDDY_LIST`      | S -> C  | `<users:space separated list>...` | (None)                                   |   🟡   | TODO       |
+| `USER_MSG`        | S -> C  | `<user:str> <msg:str>`            | (None)                                   |   🟡   | TODO       |
+| `USER_JOIN`       | S -> C  | `<user:str>`                      | (None)                                   |   🟡   | TODO       |
+| `USER_LEAVE`      | S -> C  | `<user:str>`                      | (None)                                   |   🟡   | TODO       |
+| `SERVER_MSG`      | S -> C  | `<msg:str>`                       | (None)                                   |   🟡   | TODO       |
+| `SERVER_ERR`      | S -> C  | `<msg:str>`                       | (None)                                   |   🟡   | TODO       |
+| `DISPLAY_MSG`     | S -> C  | `<msg:str>`                       | (None)                                   |   🟡   | TODO       |
+| `NEWDETAILS`      | C -> S  | (profile info, see below)         | `NEWDETAILS_OK`?                         |   🟡   | TODO       |
+| `NEWDETAILS_OK`   | S -> C? | (None?)                           | (None)                                   |   🟡   | TODO       |
+| `PING`            | C <-> S | (None)                            | `PONG`                                   |   🟢   | TODO       |
+| `PONG`            | C <-> S | (None)                            | (None)                                   |   🟢   | TODO       |
+| `PS2_SETTINGS`    |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `PASSWORD`        |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `GETAVATARS`      |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `GET_TOPIC_LIST`  | C -> S? | `?`                               | `?`                                      |   🔴   |            |
+| `GET_POSTS_LIST`  | C -> S? | `?`                               | `?`                                      |   🔴   |            |
+| `GET_FORUM_LIST`  | C -> S? | `?`                               | `?`                                      |   🔴   |            |
+| `CONFIRM_CHANGES` |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `USER_DETAILS`    |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `SMILEPACKAGE`    |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `SETTINGS`        |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `REPORT_USERS`    |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `REPORT_CHANNELS` |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `BUDDY_STATUS`    |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `AVATARIMAGE`     |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `ADVERT_VALIDITY` |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `ADVERT_TIME`     |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `ADVERT_IMAGE`    |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `ADDTOPIC`        |    ?    | `?`                               | `?`                                      |   🔴   |            |
+| `ADDPOST`         |    ?    | `?`                               | `?`                                      |   🔴   |            |
+
+User details -> `<password:str> <fullname:str> <location:str> <DOB:str:dd/mm/yy> <email:str:urlencoded> <profile:str> <sig:str> <keep_avatar/get_random:str:y/n>`
