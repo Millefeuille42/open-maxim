@@ -1,4 +1,4 @@
-# MaxIM Revival
+# open-maxim
 
 This is project is dedicated to reimplement the MaxIM Instant Messenger servers initially provided by Datel as their original servers are now permanently offline.
 
