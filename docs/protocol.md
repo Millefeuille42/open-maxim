@@ -66,4 +66,4 @@ Status Legend:
 | `ADDTOPIC`        |    ?    | `?`                               | `?`                                      |   🔴   |            |
 | `ADDPOST`         |    ?    | `?`                               | `?`                                      |   🔴   |            |
 
-User details -> `<password:str> <fullname:str> <location:str> <DOB:str:dd/mm/yy> <email:str:urlencoded> <profile:str> <sig:str> <keep_avatar/get_random:str:y/n>`
+User details -> `<username:str> <password:str> <fullname:str> <gender:str> <location:str> <DOB:str:dd/mm/yy> <email:str:urlencoded> <profile:str> <sig:str> <keep_avatar/get_random:str:y/n>`
