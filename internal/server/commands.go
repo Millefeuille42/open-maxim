@@ -262,8 +262,17 @@ func directMessage(server *Server, msg events.Message, ctx context.Context) {
 }
 
 func whois(server *Server, msg events.Message, _ context.Context) {
-	//TODO implement me
-	panic("implement me")
+	if len(msg.Args) < 1 {
+		msg.Origin.Send(events.ServerErrMessage("Missing user name."))
+		return
+	}
+	user, ok := server.Users.Get(msg.Args[0])
+	if !ok {
+		msg.Origin.Send(events.ServerErrMessage("User not found."))
+		return
+	}
+
+	msg.Origin.Send(FormatWhoisAnswer(user))
 }
 
 func newDetails(server *Server, msg events.Message, _ context.Context) {

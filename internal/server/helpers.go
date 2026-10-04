@@ -6,6 +6,7 @@ import (
 	"log"
 	"maxim/internal/events"
 	"maxim/internal/models"
+	"time"
 )
 
 func extractUserFromContext(ctx context.Context) *models.User {
@@ -55,6 +56,20 @@ func FormatWhisperTarget(sender, message string) events.Message {
 	return events.UserMessage(fmt.Sprintf("[@%s] %s",
 		sender,
 		message,
+	))
+}
+
+func FormatWhoisAnswer(user *models.User) events.Message {
+	now := time.Now()
+	age := now.Year() - user.DOB.Year()
+	if now.Month() < user.DOB.Month() || (now.Month() == user.DOB.Month() && now.Day() < user.DOB.Day()) {
+		age--
+	}
+	return events.ServerMessage(fmt.Sprintf("[@%s] %s %s %dyo",
+		user.Username,
+		user.Gender,
+		user.Location,
+		age,
 	))
 }
 
