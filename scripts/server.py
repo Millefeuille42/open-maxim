@@ -34,4 +34,3 @@ while True:
     
     conn.sendall(response.encode('utf-8'))
     conn.close()
-``
