@@ -12,7 +12,6 @@ import (
 
 /* TODO implement:
 // Chat
-WHOIS -> Will likely send a SERVER_MSG containing the info
 CHANNEL_REMOVED -> Not sure when it should happen
 
 NEWDETAILS -> gets sent when submitting new details
@@ -148,13 +147,13 @@ func register(server *Server, msg events.Message, _ context.Context) {
 		Username:  username,
 		Hash:      hashSalt.Hash,
 		Salt:      hashSalt.Salt,
-		FullName:  msg.Args[2],
+		FullName:  DecodeUserDetailField(msg.Args[2]),
 		Gender:    msg.Args[3],
-		Location:  msg.Args[4],
+		Location:  DecodeUserDetailField(msg.Args[4]),
 		DOB:       dob,
-		Email:     msg.Args[6],
-		Profile:   msg.Args[7],
-		Signature: msg.Args[8],
+		Email:     DecodeUserDetailField(msg.Args[6]),
+		Profile:   DecodeUserDetailField(msg.Args[7]),
+		Signature: DecodeUserDetailField(msg.Args[8]),
 	})
 	msg.Origin.Username = username
 	msg.Origin.Send(events.RegisterOkMessage())
@@ -276,6 +275,4 @@ func whois(server *Server, msg events.Message, _ context.Context) {
 }
 
 func newDetails(server *Server, msg events.Message, _ context.Context) {
-	//TODO implement me
-	panic("implement me")
 }

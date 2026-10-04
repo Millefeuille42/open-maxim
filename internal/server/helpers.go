@@ -6,6 +6,8 @@ import (
 	"log"
 	"maxim/internal/events"
 	"maxim/internal/models"
+	"net/url"
+	"strings"
 	"time"
 )
 
@@ -71,6 +73,15 @@ func FormatWhoisAnswer(user *models.User) events.Message {
 		user.Location,
 		age,
 	))
+}
+
+func DecodeUserDetailField(field string) string {
+	withWhitespace := strings.ReplaceAll(field, "+", " ")
+	decoded, err := url.QueryUnescape(withWhitespace)
+	if err != nil {
+		return withWhitespace
+	}
+	return decoded
 }
 
 func needsLoggedIn(handler commandHandler) commandHandler {
