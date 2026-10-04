@@ -19,6 +19,10 @@ func (m *Engine[T]) Get(key string) (T, bool) {
 	return item, exists
 }
 
+func (m *Engine[T]) GetAll() map[string]T {
+	return m.items
+}
+
 func (m *Engine[T]) Remove(key string) {
 	delete(m.items, key)
 }
