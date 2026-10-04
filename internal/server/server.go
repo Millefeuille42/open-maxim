@@ -130,6 +130,13 @@ func (s *Server) handleCommands(ctx context.Context) {
 			s.handleConnection(conn)
 		case client := <-s.disconnect:
 			log.Printf("Disconnecting client: %v", client.Username)
+			user, ok := s.Users.Get(client.Username)
+			if ok && user.ActiveChannel != nil {
+				delete(user.ActiveChannel.Members, user.Username)
+				// TODO: Maybe specify that the user left because they got disconnected
+				AnnounceLeftChannel(s, user.ActiveChannel, user.Username)
+				user.ActiveChannel = nil
+			}
 			s.removeClient(client)
 		case <-pingTicker.C:
 			log.Println("Sending ping messages to all clients")

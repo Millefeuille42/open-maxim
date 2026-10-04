@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"maxim/internal/events"
 	"maxim/internal/models"
@@ -11,21 +12,12 @@ import (
 
 /* TODO implement:
 // Chat
-CHAT
-JOIN
-MSG
-CREATE
-WHOIS
-NEWDETAILS
+WHOIS -> Will likely send a SERVER_MSG containing the info
+CHANNEL_REMOVED -> Not sure when it should happen
 
-CHANNEL_ADDED
-CHANNEL_REMOVED
-USER_JOIN
-USER_LEAVE
-SERVER_MSG
-
-NEWDETAILS_OK
-USER_DETAILS -> ???
+NEWDETAILS -> gets sent when submitting new details
+USER_DETAILS -> tell client to apply changes to the UI
+NEWDETAILS_OK -> commit changes to memory card
 
 REPORT
 IGNORE ADD
@@ -39,16 +31,12 @@ BUDDY_ADD
 BUDDY_DEL
 BUDDY_LIST
 BUDDY_STATUS
-REPORT_USERS
-REPORT_CHANNELS
 
 
 // Generic
 CLIENT_PROTOCOL -> skipped
 CLIENT_TYPE -> skipped
 PONG -> skipped
-ADDTOPIC
-ADDPOST
 
 // Forum
 FORUMS
@@ -57,6 +45,8 @@ GET_POSTS_LIST
 GET_FORUM_LIST
 GETAVATARS
 SMILEPACKAGE
+ADDTOPIC
+ADDPOST
 
 // Others / unidentified
 PS2_SETTINGS
@@ -78,9 +68,9 @@ var handlers = map[events.Command]commandHandler{
 
 	events.SayCommand:           needsChannel(say),
 	events.ChatCommand:          needsLoggedIn(chat),
+	events.DirectMessageCommand: needsLoggedIn(directMessage),
 	events.JoinCommand:          needsLoggedIn(join),
 	events.CreateChannelCommand: needsLoggedIn(create),
-	events.DirectMessageCommand: needsLoggedIn(directMessage),
 	events.WhoisCommand:         needsLoggedIn(whois),
 	events.NewDetailsCommand:    needsLoggedIn(newDetails),
 
@@ -175,30 +165,100 @@ func ping(_ *Server, msg events.Message, _ context.Context) {
 	msg.Origin.Send(events.PongMessage())
 }
 
-func say(server *Server, msg events.Message, _ context.Context) {
-	for client := range server.Clients {
-		client.Send(events.UserMessage(msg.Origin.Username, strings.Join(msg.Args, " ")))
-	}
+func say(server *Server, msg events.Message, ctx context.Context) {
+	user := extractUserFromContext(ctx)
+	BroadcastToChannel(server, user.ActiveChannel, FormatChannelMessage(
+		user.ActiveChannel.Name,
+		user.Username,
+		strings.Join(msg.Args, " "),
+	))
+
 }
 
 func chat(server *Server, msg events.Message, _ context.Context) {
-	//TODO implement me
-	panic("implement me")
+	channels := server.Channels.GetAll()
+	chanNames := make([]string, 0, len(channels))
+	for _, channel := range channels {
+		chanNames = append(chanNames, channel.Name)
+	}
+
+	msg.Origin.Send(events.ReportChannelsMessage(chanNames))
+	// TODO: Send buddy list
+	// TODO: Send ignore list
 }
 
-func join(server *Server, msg events.Message, _ context.Context) {
-	//TODO implement me
-	panic("implement me")
-}
-
-func directMessage(server *Server, msg events.Message, _ context.Context) {
-	//TODO implement me
-	panic("implement me")
+func join(server *Server, msg events.Message, ctx context.Context) {
+	user := extractUserFromContext(ctx)
+	if len(msg.Args) < 1 {
+		// TODO: do not do if the originator doesn't live on the server?
+		msg.Origin.Send(events.ServerErrMessage("Missing channel name."))
+		return
+	}
+	channelName := msg.Args[0]
+	channel, ok := server.Channels.Get(channelName)
+	if !ok {
+		msg.Origin.Send(events.ServerErrMessage("Channel not found."))
+		return
+	}
+	if user.ActiveChannel != nil {
+		delete(user.ActiveChannel.Members, user.Username)
+		AnnounceLeftChannel(server, user.ActiveChannel, user.Username)
+	}
+	user.ActiveChannel = channel
+	AnnounceJoinedChannel(server, user.ActiveChannel, user.Username)
+	channel.Members[user.Username] = true
+	users := make([]string, 0, len(channel.Members))
+	for s := range channel.Members {
+		users = append(users, s)
+	}
+	msg.Origin.Send(events.ReportUsersMessage(users))
+	msg.Origin.Send(events.ServerMessage(fmt.Sprintf("Joined channel %s.", channelName)))
 }
 
 func create(server *Server, msg events.Message, _ context.Context) {
-	//TODO implement me
-	panic("implement me")
+	if len(msg.Args) < 1 {
+		msg.Origin.Send(events.ServerErrMessage("Missing channel name."))
+		return
+	}
+	channelName := msg.Args[0]
+	_, ok := server.Channels.Get(channelName)
+	if ok {
+		msg.Origin.Send(events.ServerErrMessage("Channel already exists."))
+		return
+	}
+
+	if !strings.HasPrefix(channelName, "#") {
+		msg.Origin.Send(events.ServerErrMessage("Channel name must start with '#'."))
+		return
+	}
+
+	server.Channels.Add(channelName, models.NewChannel(channelName))
+	msg.Origin.Send(events.ServerMessage(fmt.Sprintf("Created channel: %s", channelName)))
+	msg.Origin.Send(events.ChannelAddedMessage(channelName))
+}
+
+func directMessage(server *Server, msg events.Message, ctx context.Context) {
+	if len(msg.Args) < 2 {
+		msg.Origin.Send(events.ServerErrMessage("Wrong number of arguments."))
+		return
+	}
+	user := extractUserFromContext(ctx)
+	userName := msg.Args[0]
+	message := strings.Join(msg.Args[1:], " ")
+	target, ok := server.Users.Get(userName)
+	if !ok {
+		msg.Origin.Send(events.ServerErrMessage("User not found."))
+		return
+	}
+	msg.Origin.Send(FormatWhisperSender(target.Username, message))
+
+	// FIXME: this is highly inefficient
+	//  maybe keep a map of username->conn in server?
+	for client := range server.Clients {
+		if client.Username == target.Username {
+			client.Send(FormatWhisperTarget(user.Username, message))
+		}
+	}
 }
 
 func whois(server *Server, msg events.Message, _ context.Context) {

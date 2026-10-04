@@ -71,8 +71,10 @@ const (
 	NewDetailsCommand     Command = "NEWDETAILS"
 	ChannelAddedCommand   Command = "CHANNEL_ADDED"
 	ChannelRemovedCommand Command = "CHANNEL_REMOVED"
+	ReportChannelsCommand Command = "REPORT_CHANNELS"
 	UserJoinCommand       Command = "USER_JOIN"
 	UserLeaveCommand      Command = "USER_LEAVE"
+	ReportUsersCommand    Command = "REPORT_USERS"
 	ServerMessageCommand  Command = "SERVER_MSG"
 	NewDetailsOkCommand   Command = "NEWDETAILS_OK"
 	UserDetailsCommand    Command = "USER_DETAILS"
@@ -110,6 +112,40 @@ func ServerErrMessage(err string) Message {
 	return NewOutboundMessage(ServerErrorCommand, err)
 }
 
-func UserMessage(username string, msg string) Message {
-	return NewOutboundMessage(UserMessageCommand, username, msg)
+func ServerMessage(msg string) Message {
+	return NewOutboundMessage(ServerMessageCommand, msg)
+}
+
+func UserMessage(msg string) Message {
+	// It's the server responsibility to format the message
+	//  The client will "dumb print" whatever is sent
+	//  So the message should be like `[#channel] user: message`
+	//  Or [@user] hello
+
+	// Also, any message the user sent must be displayed to them
+	//  in the same fashion
+
+	// This is not intended for direct use,
+	//  use and create formatters in helpers.go
+	return NewOutboundMessage(UserMessageCommand, msg)
+}
+
+func ChannelAddedMessage(channel string) Message {
+	return NewOutboundMessage(ChannelAddedCommand, channel)
+}
+
+func ReportChannelsMessage(channels []string) Message {
+	return NewOutboundMessage(ReportChannelsCommand, channels...)
+}
+
+func ReportUsersMessage(users []string) Message {
+	return NewOutboundMessage(ReportUsersCommand, users...)
+}
+
+func UserJoinMessage(username string) Message {
+	return NewOutboundMessage(UserJoinCommand, username)
+}
+
+func UserLeaveMessage(username string) Message {
+	return NewOutboundMessage(UserLeaveCommand, username)
 }
