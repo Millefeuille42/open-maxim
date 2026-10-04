@@ -88,6 +88,7 @@ func needsChannel(handler commandHandler) commandHandler {
 		}
 		if user.ActiveChannel == nil {
 			msg.Origin.Send(events.ServerErrMessage("You need to be in a channel to send a message."))
+			return
 		}
 
 		handler(server, msg, context.WithValue(ctx, "channel", user.ActiveChannel))
