@@ -11,7 +11,7 @@ import (
 type Client struct {
 	Username   string
 	conn       net.Conn
-	Outbound   chan Message
+	outbound   chan Message
 	disconnect chan<- *Client
 	closeOnce  sync.Once
 }
@@ -19,7 +19,7 @@ type Client struct {
 func NewClient(conn net.Conn, disconnect chan<- *Client) *Client {
 	return &Client{
 		conn:       conn,
-		Outbound:   make(chan Message, 10), // buffered to prevent blocking
+		outbound:   make(chan Message, 10), // buffered to prevent blocking
 		disconnect: disconnect,
 	}
 }
@@ -33,12 +33,16 @@ func (c *Client) Close() error {
 	return err
 }
 
-func (c *Client) Ping() {
+func (c *Client) Send(msg Message) {
 	select {
-	case c.Outbound <- PingMessage:
+	case c.outbound <- msg:
 	default:
 		c.Close()
 	}
+}
+
+func (c *Client) Ping() {
+	c.Send(PingMessage())
 }
 
 func (c *Client) Run(events Engine) {
@@ -49,7 +53,7 @@ func (c *Client) Run(events Engine) {
 func (c *Client) writeLoop() {
 	defer c.Close()
 
-	for msg := range c.Outbound {
+	for msg := range c.outbound {
 		log.Printf("Sending message: %s", msg.Raw)
 		_, err := fmt.Fprint(c.conn, msg.Raw+"\r\n")
 		if err != nil {
@@ -72,7 +76,7 @@ func (c *Client) readLoop(events Engine) {
 		err := events.Send(msg)
 		if err != nil {
 			log.Printf("Error sending to server: %v", err)
-			c.Outbound <- ServerErrMessage("ERROR: Server Busy.")
+			c.Send(ServerErrMessage("ERROR: Server Busy."))
 		}
 	}
 }
