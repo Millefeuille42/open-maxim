@@ -222,7 +222,7 @@ func directMessage(server *Server, msg events.Message, ctx context.Context) {
 
 	msg.Origin.Send(FormatWhisperSender(target.Username, message))
 
-	if _, ignored := target.Ignored[userName]; ignored {
+	if _, ignored := target.Ignored[user.Username]; ignored {
 		return
 	}
 	// FIXME: this is highly inefficient
