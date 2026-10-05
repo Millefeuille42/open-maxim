@@ -76,6 +76,7 @@ func login(server *Server, msg events.Message, ctx context.Context) {
 		if err == nil {
 			msg.Origin.Username = username
 			msg.Origin.Send(events.LoginOkMessage())
+			sendStatusToBuddies(server, user, events.BuddyStatusOnline)
 			return
 		}
 		log.Printf("Error generating hash for user %s: %v", username, err)
@@ -87,8 +88,6 @@ func login(server *Server, msg events.Message, ctx context.Context) {
 	case <-ctx.Done():
 		break
 	}
-
-	sendStatusToBuddies(server, user, events.BuddyStatusOnline)
 }
 
 func register(server *Server, msg events.Message, _ context.Context) {
