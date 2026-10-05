@@ -135,6 +135,7 @@ func (s *Server) handleCommands(ctx context.Context) {
 				delete(user.ActiveChannel.Members, user.Username)
 				// TODO: Maybe specify that the user left because they got disconnected
 				AnnounceLeftChannel(s, user.ActiveChannel, user.Username)
+				sendStatusToBuddies(s, user, events.BuddyStatusOffline)
 				user.ActiveChannel = nil
 			}
 			s.removeClient(client)

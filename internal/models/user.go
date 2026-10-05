@@ -11,6 +11,8 @@ type User struct {
 	Email         string
 	Profile       string
 	Signature     string
+	Buddies       map[string]bool
+	Ignored       map[string]bool
 	ActiveChannel *Channel
 	DOB           time.Time
 }

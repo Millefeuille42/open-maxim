@@ -12,10 +12,14 @@ import (
 
 var dummyUser = models.User{
 	Username: "dummy",
+	Buddies:  make(map[string]bool),
+	Ignored:  make(map[string]bool),
 }
 
 var testUser = models.User{
 	Username: "test",
+	Buddies:  make(map[string]bool),
+	Ignored:  make(map[string]bool),
 }
 
 func addTestUsers(s *server.Server) {

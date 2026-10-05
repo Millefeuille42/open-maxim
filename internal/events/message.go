@@ -78,6 +78,16 @@ const (
 	ServerMessageCommand  Command = "SERVER_MSG"
 	NewDetailsOkCommand   Command = "NEWDETAILS_OK"
 	UserDetailsCommand    Command = "USER_DETAILS"
+	BuddyStatusCommand    Command = "BUDDY_STATUS"
+	BuddyListCommand      Command = "BUDDY_LIST"
+	BuddyAddCommand       Command = "BUDDY_ADD"
+	BuddyRemoveCommand    Command = "BUDDY_DEL"
+	BuddyCommand          Command = "BUDDY"
+	IgnoreListCommand     Command = "IGNORE_LIST"
+	IgnoreAddCommand      Command = "IGNORE_ADD"
+	IgnoreRemoveCommand   Command = "IGNORE_DEL"
+	IgnoreCommand         Command = "IGNORE"
+	ReportCommand         Command = "REPORT"
 )
 
 func PingMessage() Message {
@@ -146,6 +156,14 @@ func ReportUsersMessage(users []string) Message {
 	return NewOutboundMessage(ReportUsersCommand, users...)
 }
 
+func BuddyListMessage(buddies []string) Message {
+	return NewOutboundMessage(BuddyListCommand, strings.Join(buddies, " "))
+}
+
+func IgnoreListMessage(ignored []string) Message {
+	return NewOutboundMessage(IgnoreListCommand, strings.Join(ignored, " "))
+}
+
 func UserJoinMessage(username string) Message {
 	return NewOutboundMessage(UserJoinCommand, username)
 }
@@ -157,3 +175,30 @@ func UserLeaveMessage(username string) Message {
 func UserDetailsMessage(username string, args []string) Message {
 	return NewOutboundMessage(UserDetailsCommand, username, strings.Join(args, " "))
 }
+
+func BuddyStatusMessage(username string, status BuddyStatus) Message {
+	return NewOutboundMessage(BuddyStatusCommand, username, string(status))
+}
+
+func BuddyAddMessage(username string) Message {
+	return NewOutboundMessage(BuddyAddCommand, username)
+}
+
+func BuddyRemoveMessage(username string) Message {
+	return NewOutboundMessage(BuddyRemoveCommand, username)
+}
+
+func IgnoreAddMessage(username string) Message {
+	return NewOutboundMessage(IgnoreAddCommand, username)
+}
+
+func IgnoreRemoveMessage(username string) Message {
+	return NewOutboundMessage(IgnoreRemoveCommand, username)
+}
+
+type BuddyStatus string
+
+const (
+	BuddyStatusOnline  BuddyStatus = "+"
+	BuddyStatusOffline BuddyStatus = "-"
+)

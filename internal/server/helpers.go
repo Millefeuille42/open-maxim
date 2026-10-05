@@ -20,6 +20,18 @@ func extractUserFromContext(ctx context.Context) *models.User {
 	return user
 }
 
+func sendStatusToBuddies(server *Server, currentUser *models.User, status events.BuddyStatus) {
+	for client := range server.Clients {
+		user, ok := server.Users.Get(client.Username)
+		if !ok {
+			continue
+		}
+		if _, ok = user.Buddies[currentUser.Username]; ok {
+			client.Send(events.BuddyStatusMessage(currentUser.Username, status))
+		}
+	}
+}
+
 func processUserDetails(username string, server *Server, args []string) error {
 	password := args[0]
 	hashSalt, err := server.Hash.GenerateHash([]byte(password), []byte(server.Salt))
@@ -44,6 +56,8 @@ func processUserDetails(username string, server *Server, args []string) error {
 		Email:     DecodeUserDetailField(args[4]),
 		Profile:   DecodeUserDetailField(args[5]),
 		Signature: DecodeUserDetailField(args[6]),
+		Buddies:   make(map[string]bool),
+		Ignored:   make(map[string]bool),
 	})
 	return nil
 }
@@ -53,6 +67,10 @@ func BroadcastToChannel(server *Server, channel *models.Channel, msg events.Mess
 	//  maybe keep a map of username->conn in server?
 	for client := range server.Clients {
 		if _, ok := channel.Members[client.Username]; ok {
+			user, ok := server.Users.Get(client.Username)
+			if _, ignored := user.Ignored[msg.Origin.Username]; !ok || ignored {
+				continue
+			}
 			client.Send(msg)
 		}
 	}

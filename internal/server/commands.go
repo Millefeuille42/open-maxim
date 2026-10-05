@@ -14,29 +14,6 @@ import (
 // Chat
 CHANNEL_REMOVED -> Not sure when it should happen
 
-NEWDETAILS -> gets sent when submitting new details
-USER_DETAILS -> tell client to apply changes to the UI
-NEWDETAILS_OK -> commit changes to memory card
-
-REPORT
-IGNORE ADD
-IGNORE REMOVE
-BUDDY ADD
-BUDDY REMOVE
-IGNORE_ADD
-IGNORE_DEL
-IGNORE_LIST
-BUDDY_ADD
-BUDDY_DEL
-BUDDY_LIST
-BUDDY_STATUS
-
-
-// Generic
-CLIENT_PROTOCOL -> skipped
-CLIENT_TYPE -> skipped
-PONG -> skipped
-
 // Forum
 FORUMS
 GET_TOPIC_LIST
@@ -46,13 +23,9 @@ GETAVATARS
 SMILEPACKAGE
 ADDTOPIC
 ADDPOST
-
-// Others / unidentified
-PS2_SETTINGS
-PASSWORD
-CONFIRM_CHANGES
-SETTINGS
 AVATARIMAGE
+
+// Advert
 ADVERT_VALIDITY
 ADVERT_TIME
 ADVERT_IMAGE
@@ -72,6 +45,9 @@ var handlers = map[events.Command]commandHandler{
 	events.CreateChannelCommand: needsLoggedIn(create),
 	events.WhoisCommand:         needsLoggedIn(whois),
 	events.NewDetailsCommand:    needsLoggedIn(newDetails),
+	events.BuddyCommand:         needsLoggedIn(buddy),
+	events.IgnoreCommand:        needsLoggedIn(ignore),
+	events.ReportCommand:        needsLoggedIn(report),
 
 	events.PongCommand:           noop,
 	events.ClientProtocolCommand: noop,
@@ -94,8 +70,8 @@ func login(server *Server, msg events.Message, ctx context.Context) {
 
 	username := msg.Args[0]
 	password := msg.Args[1]
-
-	if user, ok := server.Users.Get(username); ok {
+	user, ok := server.Users.Get(username)
+	if ok {
 		err := server.Hash.Compare(user.Hash, user.Salt, []byte(password))
 		if err == nil {
 			msg.Origin.Username = username
@@ -109,8 +85,10 @@ func login(server *Server, msg events.Message, ctx context.Context) {
 	case <-time.After(time.Until(end)):
 		msg.Origin.Send(events.LoginFailedMessage("Wrong username or password."))
 	case <-ctx.Done():
-		return
+		break
 	}
+
+	sendStatusToBuddies(server, user, events.BuddyStatusOnline)
 }
 
 func register(server *Server, msg events.Message, _ context.Context) {
@@ -151,19 +129,28 @@ func say(server *Server, msg events.Message, ctx context.Context) {
 		user.Username,
 		strings.Join(msg.Args, " "),
 	))
-
 }
 
-func chat(server *Server, msg events.Message, _ context.Context) {
+func chat(server *Server, msg events.Message, ctx context.Context) {
 	channels := server.Channels.GetAll()
 	chanNames := make([]string, 0, len(channels))
 	for _, channel := range channels {
 		chanNames = append(chanNames, channel.Name)
 	}
-
 	msg.Origin.Send(events.ReportChannelsMessage(chanNames))
-	// TODO: Send buddy list
-	// TODO: Send ignore list
+
+	user := extractUserFromContext(ctx)
+	buddies := make([]string, 0, len(user.Buddies))
+	for buddy := range user.Buddies {
+		buddies = append(buddies, buddy)
+	}
+	msg.Origin.Send(events.BuddyListMessage(buddies))
+
+	ignoredUsers := make([]string, 0, len(user.Ignored))
+	for ignored := range user.Ignored {
+		ignoredUsers = append(ignoredUsers, ignored)
+	}
+	msg.Origin.Send(events.IgnoreListMessage(ignoredUsers))
 }
 
 func join(server *Server, msg events.Message, ctx context.Context) {
@@ -229,8 +216,16 @@ func directMessage(server *Server, msg events.Message, ctx context.Context) {
 		msg.Origin.Send(events.ServerErrMessage("User not found."))
 		return
 	}
+	if _, ignored := user.Ignored[target.Username]; ignored {
+		msg.Origin.Send(events.ServerErrMessage("User is ignored."))
+		return
+	}
+
 	msg.Origin.Send(FormatWhisperSender(target.Username, message))
 
+	if _, ignored := target.Ignored[userName]; ignored {
+		return
+	}
 	// FIXME: this is highly inefficient
 	//  maybe keep a map of username->conn in server?
 	for client := range server.Clients {
@@ -267,4 +262,86 @@ func newDetails(server *Server, msg events.Message, ctx context.Context) {
 	}
 	msg.Origin.Send(events.UserDetailsMessage(user.Username, msg.Args))
 	msg.Origin.Send(events.NewDetailsOkMessage())
+}
+
+func buddy(server *Server, msg events.Message, ctx context.Context) {
+	if len(msg.Args) < 2 {
+		msg.Origin.Send(events.ServerErrMessage("Wrong number of arguments."))
+		return
+	}
+
+	if _, ok := server.Users.Get(msg.Args[1]); !ok {
+		msg.Origin.Send(events.ServerErrMessage("User not found."))
+		return
+	}
+
+	user := extractUserFromContext(ctx)
+	target := msg.Args[1]
+
+	switch strings.ToUpper(msg.Args[0]) {
+	case "ADD":
+		if _, ok := user.Buddies[target]; ok {
+			msg.Origin.Send(events.ServerErrMessage("User is already your buddy."))
+			return
+		}
+		user.Buddies[target] = true
+		msg.Origin.Send(events.BuddyAddMessage(target))
+		msg.Origin.Send(events.ServerMessage(fmt.Sprintf("%s is now your buddy!", target)))
+	case "REMOVE":
+		if _, ok := user.Buddies[target]; !ok {
+			msg.Origin.Send(events.ServerErrMessage("User is not your buddy."))
+			return
+		}
+		delete(user.Buddies, target)
+		msg.Origin.Send(events.BuddyRemoveMessage(target))
+		msg.Origin.Send(events.ServerMessage(fmt.Sprintf("%s is not your buddy anymore :(", target)))
+	default:
+		msg.Origin.Send(events.ServerErrMessage("Unsupported operation."))
+	}
+}
+
+func ignore(server *Server, msg events.Message, ctx context.Context) {
+	if len(msg.Args) < 2 {
+		msg.Origin.Send(events.ServerErrMessage("Wrong number of arguments."))
+		return
+	}
+
+	if _, ok := server.Users.Get(msg.Args[1]); !ok {
+		msg.Origin.Send(events.ServerErrMessage("User not found."))
+		return
+	}
+
+	user := extractUserFromContext(ctx)
+	target := msg.Args[1]
+
+	switch strings.ToUpper(msg.Args[0]) {
+	case "ADD":
+		if _, ok := user.Ignored[target]; ok {
+			msg.Origin.Send(events.ServerErrMessage("User is already ignored."))
+			return
+		}
+		user.Ignored[target] = true
+		msg.Origin.Send(events.IgnoreAddMessage(target))
+		msg.Origin.Send(events.ServerMessage(fmt.Sprintf("%s is now ignored.", target)))
+	case "REMOVE":
+		if _, ok := user.Ignored[target]; !ok {
+			msg.Origin.Send(events.ServerErrMessage("User is not ignored."))
+			return
+		}
+		delete(user.Ignored, target)
+		msg.Origin.Send(events.IgnoreRemoveMessage(target))
+		msg.Origin.Send(events.ServerMessage(fmt.Sprintf("%s is not ignored anymore.", target)))
+	default:
+		msg.Origin.Send(events.ServerErrMessage("Unsupported operation."))
+	}
+}
+
+func report(_ *Server, msg events.Message, _ context.Context) {
+	if len(msg.Args) < 1 {
+		msg.Origin.Send(events.ServerErrMessage("Wrong number of arguments."))
+		return
+	}
+
+	log.Printf("REPORT: User `%s` reported `%s`\n", msg.Origin.Username, msg.Args[0])
+	msg.Origin.Send(events.ServerMessage(fmt.Sprintf("%s successfully reported.", msg.Args[0])))
 }
