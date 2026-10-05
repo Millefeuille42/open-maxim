@@ -168,11 +168,9 @@ func (s *Server) Run(ctx context.Context) {
 	s.startListener(ctx)
 	wg := sync.WaitGroup{}
 
-	wg.Add(1)
-	go func() {
-		defer wg.Done()
+	wg.Go(func() {
 		s.handleConnections()
-	}()
+	})
 
 	s.handleCommands(ctx)
 	wg.Wait()

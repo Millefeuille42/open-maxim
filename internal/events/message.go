@@ -149,11 +149,11 @@ func ChannelAddedMessage(channel string) Message {
 }
 
 func ReportChannelsMessage(channels []string) Message {
-	return NewOutboundMessage(ReportChannelsCommand, channels...)
+	return NewOutboundMessage(ReportChannelsCommand, strings.Join(channels, " "))
 }
 
 func ReportUsersMessage(users []string) Message {
-	return NewOutboundMessage(ReportUsersCommand, users...)
+	return NewOutboundMessage(ReportUsersCommand, strings.Join(users, " "))
 }
 
 func BuddyListMessage(buddies []string) Message {
