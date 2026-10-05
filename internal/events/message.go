@@ -96,6 +96,10 @@ func LoginOkMessage() Message {
 	return NewOutboundMessage(LoginOkCommand)
 }
 
+func NewDetailsOkMessage() Message {
+	return NewOutboundMessage(NewDetailsOkCommand)
+}
+
 func RegisterFailedMessage(reason string) Message {
 	return NewOutboundMessage(RegisterFailedCommand, reason)
 }
@@ -148,4 +152,8 @@ func UserJoinMessage(username string) Message {
 
 func UserLeaveMessage(username string) Message {
 	return NewOutboundMessage(UserLeaveCommand, username)
+}
+
+func UserDetailsMessage(username string, args []string) Message {
+	return NewOutboundMessage(UserDetailsCommand, username, strings.Join(args, " "))
 }

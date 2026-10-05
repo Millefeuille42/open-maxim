@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"maxim/internal/events"
@@ -17,6 +18,34 @@ func extractUserFromContext(ctx context.Context) *models.User {
 		return &models.User{}
 	}
 	return user
+}
+
+func processUserDetails(username string, server *Server, args []string) error {
+	password := args[0]
+	hashSalt, err := server.Hash.GenerateHash([]byte(password), []byte(server.Salt))
+	if err != nil {
+		log.Printf("Error generating hash for user %s: %v", username, err)
+		return errors.New("error while processing password")
+	}
+
+	dob, err := time.Parse("02/01/06", args[4])
+	if err != nil {
+		log.Printf("Error parsing dob for user %s: %v", username, err)
+		return errors.New("invalid DOB")
+	}
+	server.Users.Add(username, &models.User{
+		Username:  username,
+		Hash:      hashSalt.Hash,
+		Salt:      hashSalt.Salt,
+		FullName:  DecodeUserDetailField(args[1]),
+		Gender:    args[2],
+		Location:  DecodeUserDetailField(args[3]),
+		DOB:       dob,
+		Email:     DecodeUserDetailField(args[4]),
+		Profile:   DecodeUserDetailField(args[5]),
+		Signature: DecodeUserDetailField(args[6]),
+	})
+	return nil
 }
 
 func BroadcastToChannel(server *Server, channel *models.Channel, msg events.Message) {

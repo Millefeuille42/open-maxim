@@ -130,31 +130,11 @@ func register(server *Server, msg events.Message, _ context.Context) {
 		return
 	}
 
-	password := msg.Args[1]
-	hashSalt, err := server.Hash.GenerateHash([]byte(password), []byte(server.Salt))
+	err := processUserDetails(username, server, msg.Args[1:])
 	if err != nil {
-		log.Printf("Error generating hash for user %s: %v", username, err)
-		msg.Origin.Send(events.RegisterFailedMessage("Error while registering user."))
+		msg.Origin.Send(events.RegisterFailedMessage(err.Error()))
 		return
 	}
-
-	dob, err := time.Parse("02/01/06", msg.Args[5])
-	if err != nil {
-		msg.Origin.Send(events.RegisterFailedMessage("Invalid DOB."))
-		return
-	}
-	server.Users.Add(username, &models.User{
-		Username:  username,
-		Hash:      hashSalt.Hash,
-		Salt:      hashSalt.Salt,
-		FullName:  DecodeUserDetailField(msg.Args[2]),
-		Gender:    msg.Args[3],
-		Location:  DecodeUserDetailField(msg.Args[4]),
-		DOB:       dob,
-		Email:     DecodeUserDetailField(msg.Args[6]),
-		Profile:   DecodeUserDetailField(msg.Args[7]),
-		Signature: DecodeUserDetailField(msg.Args[8]),
-	})
 	msg.Origin.Username = username
 	msg.Origin.Send(events.RegisterOkMessage())
 	return
@@ -274,5 +254,17 @@ func whois(server *Server, msg events.Message, _ context.Context) {
 	msg.Origin.Send(FormatWhoisAnswer(user))
 }
 
-func newDetails(server *Server, msg events.Message, _ context.Context) {
+func newDetails(server *Server, msg events.Message, ctx context.Context) {
+	if len(msg.Args) != 9 {
+		msg.Origin.Send(events.RegisterFailedMessage("Wrong number of arguments."))
+		return
+	}
+	user := extractUserFromContext(ctx)
+	// TODO: Implement avatar management
+	err := processUserDetails(user.Username, server, msg.Args)
+	if err != nil {
+		return
+	}
+	msg.Origin.Send(events.UserDetailsMessage(user.Username, msg.Args))
+	msg.Origin.Send(events.NewDetailsOkMessage())
 }
