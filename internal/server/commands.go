@@ -123,7 +123,7 @@ func ping(_ *Server, msg events.Message, _ context.Context) {
 
 func say(server *Server, msg events.Message, ctx context.Context) {
 	user := extractUserFromContext(ctx)
-	BroadcastToChannel(server, user.ActiveChannel, FormatChannelMessage(
+	BroadcastToChannel(msg.Origin.Username, server, user.ActiveChannel, FormatChannelMessage(
 		user.ActiveChannel.Name,
 		user.Username,
 		strings.Join(msg.Args, " "),

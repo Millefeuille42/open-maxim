@@ -62,13 +62,13 @@ func processUserDetails(username string, server *Server, args []string) error {
 	return nil
 }
 
-func BroadcastToChannel(server *Server, channel *models.Channel, msg events.Message) {
+func BroadcastToChannel(sender string, server *Server, channel *models.Channel, msg events.Message) {
 	// FIXME: this is highly inefficient
 	//  maybe keep a map of username->conn in server?
 	for client := range server.Clients {
 		if _, ok := channel.Members[client.Username]; ok {
 			user, ok := server.Users.Get(client.Username)
-			if _, ignored := user.Ignored[msg.Origin.Username]; !ok || ignored {
+			if _, ignored := user.Ignored[sender]; !ok || ignored {
 				continue
 			}
 			client.Send(msg)
@@ -77,13 +77,13 @@ func BroadcastToChannel(server *Server, channel *models.Channel, msg events.Mess
 }
 
 func AnnounceLeftChannel(server *Server, channel *models.Channel, username string) {
-	BroadcastToChannel(server, channel, events.UserLeaveMessage(username))
-	BroadcastToChannel(server, channel, events.ServerMessage(fmt.Sprintf("%s left channel", username)))
+	BroadcastToChannel(username, server, channel, events.UserLeaveMessage(username))
+	BroadcastToChannel(username, server, channel, events.ServerMessage(fmt.Sprintf("%s left channel", username)))
 }
 
 func AnnounceJoinedChannel(server *Server, channel *models.Channel, username string) {
-	BroadcastToChannel(server, channel, events.UserJoinMessage(username))
-	BroadcastToChannel(server, channel, events.ServerMessage(fmt.Sprintf("%s joined channel", username)))
+	BroadcastToChannel(username, server, channel, events.UserJoinMessage(username))
+	BroadcastToChannel(username, server, channel, events.ServerMessage(fmt.Sprintf("%s joined channel", username)))
 }
 
 func FormatChannelMessage(channel, username, message string) events.Message {
