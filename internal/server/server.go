@@ -135,9 +135,9 @@ func (s *Server) handleCommands(ctx context.Context) {
 				delete(user.ActiveChannel.Members, user.Username)
 				// TODO: Maybe specify that the user left because they got disconnected
 				AnnounceLeftChannel(s, user.ActiveChannel, user.Username)
-				sendStatusToBuddies(s, user, events.BuddyStatusOffline)
 				user.ActiveChannel = nil
 			}
+			sendStatusToBuddies(s, user, events.BuddyStatusOffline)
 			s.removeClient(client)
 		case <-pingTicker.C:
 			log.Println("Sending ping messages to all clients")
