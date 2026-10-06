@@ -203,7 +203,9 @@ func create(server *Server, msg events.Message, _ context.Context) {
 
 	server.Channels.Add(channelName, models.NewChannel(channelName))
 	msg.Origin.Send(events.ServerMessage(fmt.Sprintf("Created channel: %s", channelName)))
-	msg.Origin.Send(events.ChannelAddedMessage(channelName))
+	for c := range server.Clients {
+		c.Send(events.ChannelAddedMessage(channelName))
+	}
 }
 
 func directMessage(server *Server, msg events.Message, ctx context.Context) {
