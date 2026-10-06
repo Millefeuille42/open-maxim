@@ -102,6 +102,10 @@ func register(server *Server, msg events.Message, _ context.Context) {
 	}
 
 	username := msg.Args[0]
+	if !validateUsername(username, 32) {
+		msg.Origin.Send(events.RegisterFailedMessage("Invalid username."))
+		return
+	}
 	if _, ok := server.Users.Get(username); ok {
 		msg.Origin.Send(events.RegisterFailedMessage("Another user with this username already exists."))
 		return
@@ -250,13 +254,14 @@ func whois(server *Server, msg events.Message, _ context.Context) {
 
 func newDetails(server *Server, msg events.Message, ctx context.Context) {
 	if len(msg.Args) != 9 {
-		msg.Origin.Send(events.RegisterFailedMessage("Wrong number of arguments."))
+		msg.Origin.Send(events.ServerErrMessage("Wrong number of arguments."))
 		return
 	}
 	user := extractUserFromContext(ctx)
 	// TODO: Implement avatar management
 	err := processUserDetails(user.Username, server, msg.Args)
 	if err != nil {
+		msg.Origin.Send(events.ServerErrMessage(err.Error()))
 		return
 	}
 	msg.Origin.Send(events.UserDetailsMessage(user.Username, msg.Args))

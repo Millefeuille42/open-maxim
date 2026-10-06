@@ -5,17 +5,21 @@ import (
 	"time"
 )
 
+type UserDetails struct {
+	Gender    string
+	FullName  string
+	Location  string
+	Email     string
+	Profile   string
+	Signature string
+	DOB       time.Time
+}
+
 type User struct {
 	Username      string
 	Password      utils.HashSalt
-	Gender        string
-	FullName      string
-	Location      string
-	Email         string
-	Profile       string
-	Signature     string
+	Details       UserDetails
 	Buddies       map[string]bool
 	Ignored       map[string]bool
 	ActiveChannel *Channel
-	DOB           time.Time
 }

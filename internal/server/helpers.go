@@ -20,44 +20,80 @@ func extractUserFromContext(ctx context.Context) *models.User {
 	return user
 }
 
-func sendStatusToBuddies(server *Server, currentUser *models.User, status events.BuddyStatus) {
-	for client := range server.Clients {
-		user, ok := server.Users.Get(client.Username)
-		if !ok {
-			continue
-		}
-		if _, ok = user.Buddies[currentUser.Username]; ok {
-			client.Send(events.BuddyStatusMessage(currentUser.Username, status))
-		}
+func validateUsername(name string, max int) bool {
+	if len(name) <= 0 || len(name) > max {
+		return false
 	}
+
+	return strings.IndexFunc(name, func(r rune) bool {
+		switch {
+		case r >= 'a' && r <= 'z',
+			r >= 'A' && r <= 'Z',
+			r >= '0' && r <= '9',
+			r == '_', r == '-', r == '.':
+			return false
+		default:
+			return true
+		}
+	}) == -1
+}
+
+func parseUserDetails(args []string) (models.UserDetails, error) {
+	details := models.UserDetails{}
+
+	if len(args) < 8 {
+		return details, errors.New("wrong number of profile arguments")
+	}
+	if args[0] == "" || len(args[0]) > 256 {
+		return details, errors.New("invalid password length")
+	}
+	if len(args) == 9 && args[8] != "y" && args[8] != "n" {
+		return details, errors.New("invalid avatar preference")
+	}
+
+	fields := make([]string, 8)
+	for i, field := range args[1:8] {
+		value, err := url.QueryUnescape(field)
+		if err != nil {
+			return details, errors.New("invalid profile encoding")
+		}
+		fields[i] = value
+	}
+
+	dob, err := time.Parse("02/01/06", fields[4])
+	if err != nil {
+		return details, errors.New("invalid DOB")
+	}
+
+	details = models.UserDetails{
+		FullName:  fields[1],
+		Gender:    fields[2],
+		Location:  fields[3],
+		DOB:       dob,
+		Email:     fields[5],
+		Profile:   fields[6],
+		Signature: fields[7],
+	}
+	return details, nil
 }
 
 func processUserDetails(username string, server *Server, args []string) error {
-	password := args[0]
-	hashSalt, err := server.Hash.GenerateHash([]byte(password))
+	details, err := parseUserDetails(args)
 	if err != nil {
-		log.Printf("Error generating hash for user %s: %v", username, err)
-		return errors.New("error while processing password")
+		return err
+	}
+	hash, err := server.Hash.GenerateHash([]byte(args[0]))
+	if err != nil {
+		return errors.New("could not process password")
 	}
 
-	dob, err := time.Parse("02/01/06", args[4])
-	if err != nil {
-		log.Printf("Error parsing dob for user %s: %v", username, err)
-		return errors.New("invalid DOB")
+	user, exists := server.Users.Get(username)
+	if !exists {
+		user = &models.User{Username: username, Buddies: make(map[string]bool), Ignored: make(map[string]bool)}
 	}
-	server.Users.Add(username, &models.User{
-		Username:  username,
-		Password:  *hashSalt,
-		FullName:  DecodeUserDetailField(args[1]),
-		Gender:    args[2],
-		Location:  DecodeUserDetailField(args[3]),
-		DOB:       dob,
-		Email:     DecodeUserDetailField(args[4]),
-		Profile:   DecodeUserDetailField(args[5]),
-		Signature: DecodeUserDetailField(args[6]),
-		Buddies:   make(map[string]bool),
-		Ignored:   make(map[string]bool),
-	})
+	user.Details = details
+	user.Password = *hash
+	server.Users.Add(username, user)
 	return nil
 }
 
@@ -71,6 +107,18 @@ func BroadcastToChannel(sender string, server *Server, channel *models.Channel, 
 				continue
 			}
 			client.Send(msg)
+		}
+	}
+}
+
+func sendStatusToBuddies(server *Server, currentUser *models.User, status events.BuddyStatus) {
+	for client := range server.Clients {
+		user, ok := server.Users.Get(client.Username)
+		if !ok {
+			continue
+		}
+		if _, ok = user.Buddies[currentUser.Username]; ok {
+			client.Send(events.BuddyStatusMessage(currentUser.Username, status))
 		}
 	}
 }
@@ -109,14 +157,15 @@ func FormatWhisperTarget(sender, message string) events.Message {
 
 func FormatWhoisAnswer(user *models.User) events.Message {
 	now := time.Now()
-	age := now.Year() - user.DOB.Year()
-	if now.Month() < user.DOB.Month() || (now.Month() == user.DOB.Month() && now.Day() < user.DOB.Day()) {
+	age := now.Year() - user.Details.DOB.Year()
+	if now.Month() < user.Details.DOB.Month() ||
+		(now.Month() == user.Details.DOB.Month() && now.Day() < user.Details.DOB.Day()) {
 		age--
 	}
 	return events.ServerMessage(fmt.Sprintf("[@%s] %s %s %dyo",
 		user.Username,
-		user.Gender,
-		user.Location,
+		user.Details.Gender,
+		user.Details.Location,
 		age,
 	))
 }
