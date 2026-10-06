@@ -37,6 +37,7 @@ var handlers = map[events.Command]commandHandler{
 	events.LoginCommand:    login,
 	events.PingCommand:     ping,
 	events.RegisterCommand: register,
+	events.QuitCommand:     quit,
 
 	events.SayCommand:           needsChannel(say),
 	events.ChatCommand:          needsLoggedIn(chat),
@@ -120,6 +121,8 @@ func register(server *Server, msg events.Message, _ context.Context) {
 	msg.Origin.Send(events.RegisterOkMessage())
 	return
 }
+
+func quit(_ *Server, msg events.Message, _ context.Context) { _ = msg.Origin.Close() }
 
 func ping(_ *Server, msg events.Message, _ context.Context) {
 	msg.Origin.Send(events.PongMessage())

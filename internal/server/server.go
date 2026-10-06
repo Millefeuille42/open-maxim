@@ -68,9 +68,9 @@ func (s *Server) handleConnections() {
 	}
 }
 
-func (s *Server) handleConnection(conn net.Conn) {
+func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
 	client := events.NewClient(conn, s.disconnect)
-	client.Run(s.Events)
+	client.Run(ctx, s.Events)
 	s.Clients[client] = true
 }
 
@@ -116,7 +116,6 @@ func (s *Server) handleCommands(ctx context.Context) {
 		select {
 		case msg := <-s.Events.Receive():
 			// TODO: add proper client logging
-			log.Printf("Received message from client: %s", msg.Raw)
 			cmdCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
 			go func() {
 				defer cancel()
@@ -125,7 +124,7 @@ func (s *Server) handleCommands(ctx context.Context) {
 		case conn := <-s.newConn:
 			log.Printf("New connection from %v", conn.RemoteAddr())
 			s.clientWaitGroup.Add(1)
-			s.handleConnection(conn)
+			s.handleConnection(ctx, conn)
 		case client := <-s.disconnect:
 			log.Printf("Disconnecting client: %v", client.Username)
 			user, ok := s.Users.Get(client.Username)
