@@ -122,15 +122,6 @@ func FormatWhoisAnswer(user *models.User) events.Message {
 	))
 }
 
-func DecodeUserDetailField(field string) string {
-	withWhitespace := strings.ReplaceAll(field, "+", " ")
-	decoded, err := url.QueryUnescape(withWhitespace)
-	if err != nil {
-		return withWhitespace
-	}
-	return decoded
-}
-
 func needsLoggedIn(handler commandHandler) commandHandler {
 	// TODO: check how to handle if the user is logged in
 	//  another server of the pool, should not be an issue

@@ -11,15 +11,38 @@ type Message struct {
 	Args    []string
 }
 
+const whitespace = " \t"
+
+var sanitizer = strings.NewReplacer("\r", " ", "\n", " ")
+
+func popArg(text string) (string, string) {
+	if i := strings.IndexAny(text, whitespace); i >= 0 {
+		return text[:i], strings.TrimLeft(text[i+1:], whitespace)
+	}
+	return text, ""
+}
+
 func NewMessageFromRaw(raw string) Message {
-	args := strings.Fields(raw)
-	if len(args) == 0 {
+	rawTrimmed := strings.TrimLeft(raw, " \t")
+	if rawTrimmed == "" {
 		return Message{}
+	}
+	command, rest := popArg(rawTrimmed)
+	cmd := Command(strings.ToUpper(command))
+	var args []string
+	switch cmd {
+	case SayCommand:
+		args = []string{rest}
+	case DirectMessageCommand:
+		target, body := popArg(rest)
+		args = []string{target, body}
+	default:
+		args = strings.Fields(rest)
 	}
 	return Message{
 		Raw:     raw,
-		Command: Command(strings.ToUpper(args[0])),
-		Args:    args[1:],
+		Command: cmd,
+		Args:    args,
 	}
 }
 
@@ -30,10 +53,7 @@ func NewMessageFromClient(raw string, client *Client) Message {
 }
 
 func NewOutboundMessage(cmd Command, args ...string) Message {
-	raw := string(cmd)
-	if len(args) > 0 {
-		raw += " " + strings.Join(args, " ")
-	}
+	raw := string(cmd) + " " + sanitizer.Replace(strings.Join(args, " "))
 	return Message{
 		Raw:     raw,
 		Command: cmd,
