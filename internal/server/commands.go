@@ -72,7 +72,7 @@ func login(server *Server, msg events.Message, ctx context.Context) {
 	password := msg.Args[1]
 	user, ok := server.Users.Get(username)
 	if ok {
-		err := server.Hash.Compare(user.Hash, user.Salt, []byte(password))
+		err := server.Hash.Compare(user.Password, []byte(password))
 		if err == nil {
 			msg.Origin.Username = username
 			msg.Origin.Send(events.LoginOkMessage())

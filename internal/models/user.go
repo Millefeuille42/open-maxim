@@ -1,10 +1,13 @@
 package models
 
-import "time"
+import (
+	"maxim/internal/utils"
+	"time"
+)
 
 type User struct {
 	Username      string
-	Hash, Salt    []byte
+	Password      utils.HashSalt
 	Gender        string
 	FullName      string
 	Location      string

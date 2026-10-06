@@ -19,7 +19,6 @@ import (
 type Server struct {
 	Port int
 	Hash *utils.Argon2idHash
-	Salt string
 
 	Clients         map[*events.Client]bool
 	clientWaitGroup sync.WaitGroup
@@ -35,11 +34,10 @@ type Server struct {
 	listener net.Listener
 }
 
-func NewServer(port int, salt string) *Server {
+func NewServer(port int) *Server {
 	return &Server{
 		Port:    port,
 		Hash:    utils.NewArgon2idHash(1, 32, 64*1024, 32, 256),
-		Salt:    salt,
 		Clients: make(map[*events.Client]bool),
 
 		// TODO add permanent state driver like a DB?

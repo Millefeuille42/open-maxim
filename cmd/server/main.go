@@ -23,27 +23,19 @@ var testUser = models.User{
 }
 
 func addTestUsers(s *server.Server) {
-	hashSalt, err := s.Hash.GenerateHash([]byte("password"), []byte(s.Salt))
-	if err != nil {
-		log.Fatal(err)
+	for _, user := range []*models.User{&dummyUser, &testUser} {
+		hash, err := s.Hash.GenerateHash([]byte("password"))
+		if err != nil {
+			log.Fatal(err)
+		}
+		user.Password = *hash
+		s.Users.Add(user.Username, user)
 	}
-
-	dummyUser.Hash = hashSalt.Hash
-	dummyUser.Salt = hashSalt.Salt
-	testUser.Hash = hashSalt.Hash
-	testUser.Salt = hashSalt.Salt
-
-	s.Users.Add(dummyUser.Username, &dummyUser)
-	s.Users.Add(testUser.Username, &testUser)
 }
 
 func main() {
 	// TODO add argument parsing?
-	salt := os.Getenv("MAXIM_SALT")
-	if len(salt) == 0 {
-		log.Fatal("MAXIM_SALT environment variable not set")
-	}
-	s := server.NewServer(2002, salt)
+	s := server.NewServer(2002)
 	ctx, cancel := context.WithCancel(context.Background())
 	// TODO make this happen in dev mode only
 	addTestUsers(s)

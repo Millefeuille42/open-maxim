@@ -34,7 +34,7 @@ func sendStatusToBuddies(server *Server, currentUser *models.User, status events
 
 func processUserDetails(username string, server *Server, args []string) error {
 	password := args[0]
-	hashSalt, err := server.Hash.GenerateHash([]byte(password), []byte(server.Salt))
+	hashSalt, err := server.Hash.GenerateHash([]byte(password))
 	if err != nil {
 		log.Printf("Error generating hash for user %s: %v", username, err)
 		return errors.New("error while processing password")
@@ -47,8 +47,7 @@ func processUserDetails(username string, server *Server, args []string) error {
 	}
 	server.Users.Add(username, &models.User{
 		Username:  username,
-		Hash:      hashSalt.Hash,
-		Salt:      hashSalt.Salt,
+		Password:  *hashSalt,
 		FullName:  DecodeUserDetailField(args[1]),
 		Gender:    args[2],
 		Location:  DecodeUserDetailField(args[3]),
