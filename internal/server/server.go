@@ -7,7 +7,6 @@ import (
 	"log"
 	"maxim/internal/events"
 	"maxim/internal/events/local"
-	"maxim/internal/models"
 	"maxim/internal/state"
 	"maxim/internal/state/memory"
 	"maxim/internal/utils"
@@ -16,161 +15,223 @@ import (
 	"time"
 )
 
+const (
+	maxClients         = 128
+	maxPendingCommands = 32
+	maxAuthWorkers     = 4
+	maxAuthPerMinute   = 30
+	maxRateEntries     = 4096
+)
+
+type session struct {
+	client      *events.Client
+	username    string
+	channelName string
+	pending     bool
+	queue       []events.ClientMessage
+}
+
 type Server struct {
-	Port int
-	Hash *utils.Argon2idHash
+	Port     int
+	Hash     *utils.Argon2idHash
+	Users    state.UserEngine
+	Channels state.ChannelEngine
 
-	Clients         map[*events.Client]bool
-	clientWaitGroup sync.WaitGroup
-
-	Users    state.Engine[*models.User]
-	Channels state.Engine[*models.Channel]
-
-	Events events.Engine
-
-	newConn    chan net.Conn
-	disconnect chan *events.Client
-
-	listener net.Listener
+	clients      map[*events.Client]*session
+	online       map[string]*session
+	commands     events.Engine
+	newConn      chan net.Conn
+	acceptErrors chan error
+	disconnect   chan *events.Client
+	authResults  chan authResult
+	authSlots    chan struct{}
+	authRates    map[string]authRate
+	wg           sync.WaitGroup
 }
 
 func NewServer(port int) *Server {
 	return &Server{
-		Port:    port,
-		Hash:    utils.NewArgon2idHash(1, 32, 64*1024, 32, 256),
-		Clients: make(map[*events.Client]bool),
-
-		// TODO add permanent state driver like a DB?
-		Users:    memory.NewEngine[*models.User](),
-		Channels: memory.NewEngine[*models.Channel](),
-
-		// TODO: Handle this as argument
-		Events: local.NewLocalEngine(100),
-
-		newConn:    make(chan net.Conn),
-		disconnect: make(chan *events.Client),
+		Port:         port,
+		Hash:         utils.NewArgon2idHash(1, 32, 64*1024, 32, 256),
+		Users:        memory.NewUserStore(),
+		Channels:     memory.NewChannelStore(),
+		clients:      make(map[*events.Client]*session),
+		online:       make(map[string]*session),
+		commands:     local.NewLocalEngine(100),
+		newConn:      make(chan net.Conn),
+		acceptErrors: make(chan error, 1),
+		disconnect:   make(chan *events.Client),
+		authResults:  make(chan authResult, maxAuthWorkers),
+		authSlots:    make(chan struct{}, maxAuthWorkers),
+		authRates:    make(map[string]authRate),
 	}
 }
 
-func (s *Server) handleConnections() {
-	log.Printf("Server is listening on port %d\n", s.Port)
+func (s *Server) Run(ctx context.Context) error {
+	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
+	if err != nil {
+		return err
+	}
+	defer listener.Close()
+	return s.Serve(ctx, listener)
+}
+
+func (s *Server) Serve(ctx context.Context, listener net.Listener) error {
+	ctx, cancel := context.WithCancel(ctx)
+	s.wg.Go(func() {
+		s.handleConnections(ctx, listener)
+	})
+
+	defer func() {
+		cancel()
+		_ = listener.Close()
+		for client := range s.clients {
+			_ = client.Close()
+		}
+		for client := range s.clients {
+			client.Wait()
+		}
+		s.wg.Wait()
+		clear(s.clients)
+		clear(s.online)
+	}()
+	return s.handleCommands(ctx)
+}
+
+func (s *Server) handleConnections(ctx context.Context, listener net.Listener) {
+	log.Printf("Server listening on %s", listener.Addr())
 	for {
-		conn, err := s.listener.Accept()
+		conn, err := listener.Accept()
 		if err != nil {
-			if errors.Is(err, net.ErrClosed) {
+			if ctx.Err() != nil {
 				return
 			}
-			log.Println(err)
-			time.Sleep(5 * time.Millisecond)
+			if errors.Is(err, net.ErrClosed) {
+				select {
+				case s.acceptErrors <- err:
+				case <-ctx.Done():
+				}
+				return
+			}
+			log.Printf("Accept failed: %v", err)
+			select {
+			case <-ctx.Done():
+				return
+			case <-time.After(50 * time.Millisecond):
+			}
 			continue
 		}
-		s.newConn <- conn
-	}
-}
-
-func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
-	client := events.NewClient(conn, s.disconnect)
-	client.Run(ctx, s.Events)
-	s.Clients[client] = true
-}
-
-func (s *Server) commandRouter(msg events.Message, ctx context.Context) {
-	if handler, ok := handlers[msg.Command]; ok {
-		handler(s, msg, ctx)
-		return
-	}
-	log.Printf("Unknown command: %s", msg.Command)
-}
-
-func (s *Server) removeClient(client *events.Client) {
-	if _, ok := s.Users.Get(client.Username); !ok {
-		s.Users.Remove(client.Username)
-	}
-	delete(s.Clients, client)
-	s.clientWaitGroup.Done()
-}
-
-func (s *Server) shutdown() {
-	go func() {
-		for client := range s.Clients {
-			client.Close()
-		}
-	}()
-
-	for len(s.Clients) > 0 {
 		select {
-		case client := <-s.disconnect:
-			s.removeClient(client)
-		case conn := <-s.newConn:
-			conn.Close()
-		case <-s.Events.Receive():
-		}
-	}
-}
-
-func (s *Server) handleCommands(ctx context.Context) {
-	pingTicker := time.NewTicker(1 * time.Minute)
-	defer pingTicker.Stop()
-
-	for {
-		select {
-		case msg := <-s.Events.Receive():
-			// TODO: add proper client logging
-			cmdCtx, cancel := context.WithTimeout(ctx, 1*time.Minute)
-			go func() {
-				defer cancel()
-				s.commandRouter(msg, cmdCtx)
-			}()
-		case conn := <-s.newConn:
-			log.Printf("New connection from %v", conn.RemoteAddr())
-			s.clientWaitGroup.Add(1)
-			s.handleConnection(ctx, conn)
-		case client := <-s.disconnect:
-			log.Printf("Disconnecting client: %v", client.Username)
-			user, ok := s.Users.Get(client.Username)
-			if ok && user.ActiveChannel != nil {
-				delete(user.ActiveChannel.Members, user.Username)
-				// TODO: Maybe specify that the user left because they got disconnected
-				AnnounceLeftChannel(s, user.ActiveChannel, user.Username)
-				user.ActiveChannel = nil
-			}
-			sendStatusToBuddies(s, user, events.BuddyStatusOffline)
-			s.removeClient(client)
-		case <-pingTicker.C:
-			log.Println("Sending ping messages to all clients")
-			for client := range s.Clients {
-				go client.Ping()
-			}
+		case s.newConn <- conn:
 		case <-ctx.Done():
-			log.Println("Shutting down server...")
-			s.shutdown()
+			_ = conn.Close()
 			return
 		}
 	}
 }
 
-func (s *Server) startListener(ctx context.Context) {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
-	if err != nil {
-		log.Fatal(err)
+func (s *Server) handleConnection(ctx context.Context, conn net.Conn) {
+	if len(s.clients) >= maxClients {
+		_ = conn.Close()
+		return
 	}
-	s.listener = listener
-	go func() {
-		<-ctx.Done()
-		s.listener.Close()
-	}()
+	client := events.NewClient(conn, s.disconnect)
+	s.clients[client] = &session{
+		client: client,
+	}
+	client.Run(ctx, s.commands)
 }
 
-func (s *Server) Run(ctx context.Context) {
-	s.startListener(ctx)
-	wg := sync.WaitGroup{}
+func (s *Server) commandRouter(msg events.ClientMessage, ctx context.Context) {
+	sess, ok := s.clients[msg.Origin]
+	if !ok || msg.Origin.IsClosed() || ctx.Err() != nil {
+		return
+	}
+	if sess.pending {
+		if len(sess.queue) >= maxPendingCommands {
+			_ = sess.client.Close()
+			return
+		}
+		sess.queue = append(sess.queue, msg)
+		return
+	}
+	log.Printf("Command %q from %s", msg.Command, sess.client.RemoteAddr())
+	if handler, ok := handlers[msg.Command]; ok {
+		handler(s, msg, newCommandContext(ctx, sess))
+		return
+	}
+	msg.Origin.Send(events.ServerErrMessage("Unknown command."))
+}
 
-	wg.Go(func() {
-		s.handleConnections()
-	})
+func (s *Server) removeClient(client *events.Client) {
+	sess, ok := s.clients[client]
+	if !ok {
+		return
+	}
+	delete(s.clients, client)
+	if sess.username == "" {
+		client.Wait()
+		return
+	}
+	delete(s.online, sess.username)
+	if sess.channelName != "" {
+		// TODO: Maybe specify that the user left because they got disconnected
+		channel, ok := s.Channels.Get(sess.channelName)
+		if !ok {
+			log.Println("Could not find channel", sess.channelName)
+			sess.client.Send(events.ServerErrMessage("Failed to send message."))
+			return
+		}
+		AnnounceLeftChannel(s, channel, sess.username)
+		delete(channel.Members, sess.username)
+		_ = s.Channels.Update(channel)
+	}
+	if user, ok := s.Users.Get(sess.username); ok {
+		sendStatusToBuddies(s, user, events.BuddyStatusOffline)
+	}
+	client.Wait()
+}
 
-	s.handleCommands(ctx)
-	wg.Wait()
-	log.Println("Waiting for all clients to shut down cleanly")
-	s.clientWaitGroup.Wait()
+func (s *Server) handleCommands(ctx context.Context) error {
+	pingTicker := time.NewTicker(1 * time.Minute)
+	defer pingTicker.Stop()
+
+	for {
+		if ctx.Err() != nil {
+			return nil
+		}
+		select {
+		case <-ctx.Done():
+			return nil
+		case err := <-s.acceptErrors:
+			return fmt.Errorf("accept connection: %w", err)
+		case msg, ok := <-s.commands.Receive():
+			if !ok {
+				return errors.New("command queue closed")
+			}
+			s.commandRouter(msg, ctx)
+		case result := <-s.authResults:
+			s.finishAuth(result, ctx)
+		case conn := <-s.newConn:
+			if ctx.Err() != nil {
+				_ = conn.Close()
+				continue
+			}
+			log.Printf("New connection from %v", conn.RemoteAddr())
+			s.handleConnection(ctx, conn)
+		case client := <-s.disconnect:
+			log.Printf("Disconnecting client: %v", client.RemoteAddr())
+			s.removeClient(client)
+		case now := <-pingTicker.C:
+			log.Println("Sending ping messages to all clients")
+			for client := range s.clients {
+				client.Ping()
+			}
+			for ip, rate := range s.authRates {
+				if now.Sub(rate.start) >= time.Minute {
+					delete(s.authRates, ip)
+				}
+			}
+		}
+	}
 }

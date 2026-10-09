@@ -1,28 +1,70 @@
 package memory
 
-type Engine[T any] struct {
+import (
+	"maxim/internal/models"
+	"maxim/internal/state"
+	"sync"
+)
+
+type Store[T models.Clonable[T]] struct {
+	mu    sync.RWMutex
 	items map[string]T
 }
 
-func NewEngine[T any]() *Engine[T] {
-	return &Engine[T]{
+func (s *Store[T]) Create(v T) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.items[v.Id()]; exists {
+		return state.ErrAlreadyExists
+	}
+	s.items[v.Id()] = v.Clone()
+	return nil
+}
+
+func (s *Store[T]) Get(id string) (T, bool) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	item, exists := s.items[id]
+	if !exists {
+		var zero T
+		return zero, false
+	}
+	return item.Clone(), true
+}
+
+func (s *Store[T]) Update(v T) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if _, exists := s.items[v.Id()]; !exists {
+		return state.ErrNotFound
+	}
+	s.items[v.Id()] = v.Clone()
+	return nil
+}
+
+func (s *Store[T]) List() ([]string, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+	items := make([]string, 0, len(s.items))
+	for id := range s.items {
+		items = append(items, id)
+	}
+	return items, nil
+}
+
+func NewStore[T models.Clonable[T]]() *Store[T] {
+	return &Store[T]{
 		items: make(map[string]T),
 	}
 }
 
-func (m *Engine[T]) Add(key string, item T) {
-	m.items[key] = item
+type UserStore = Store[*models.User]
+type ChannelStore = Store[*models.Channel]
+
+func NewUserStore() *UserStore {
+	return NewStore[*models.User]()
 }
 
-func (m *Engine[T]) Get(key string) (T, bool) {
-	item, exists := m.items[key]
-	return item, exists
-}
-
-func (m *Engine[T]) GetAll() map[string]T {
-	return m.items
-}
-
-func (m *Engine[T]) Remove(key string) {
-	delete(m.items, key)
+func NewChannelStore() *ChannelStore {
+	return NewStore[*models.Channel]()
 }

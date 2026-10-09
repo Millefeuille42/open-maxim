@@ -29,7 +29,9 @@ func addTestUsers(s *server.Server) {
 			log.Fatal(err)
 		}
 		user.Password = *hash
-		s.Users.Add(user.Username, user)
+		if err = s.Users.Create(user); err != nil {
+			log.Fatal(err)
+		}
 	}
 }
 
@@ -47,6 +49,8 @@ func main() {
 		log.Println("Shutdown signal received, initiating graceful shutdown...")
 		cancel()
 	}()
-
-	s.Run(ctx)
+	err := s.Run(ctx)
+	if err != nil {
+		log.Fatal(err)
+	}
 }

@@ -10,6 +10,6 @@ package events
 //  routing can be implemented at driver level
 
 type Engine interface {
-	Send(msg Message) error
-	Receive() <-chan Message
+	Send(msg ClientMessage) error
+	Receive() <-chan ClientMessage
 }

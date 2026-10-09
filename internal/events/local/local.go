@@ -8,16 +8,16 @@ import (
 var ErrEngineFull = errors.New("local event engine is at capacity")
 
 type Engine struct {
-	messages chan events.Message
+	messages chan events.ClientMessage
 }
 
 func NewLocalEngine(bufferSize int) *Engine {
 	return &Engine{
-		messages: make(chan events.Message, bufferSize),
+		messages: make(chan events.ClientMessage, bufferSize),
 	}
 }
 
-func (e *Engine) Send(msg events.Message) error {
+func (e *Engine) Send(msg events.ClientMessage) error {
 	select {
 	case e.messages <- msg:
 		return nil
@@ -26,6 +26,6 @@ func (e *Engine) Send(msg events.Message) error {
 	}
 }
 
-func (e *Engine) Receive() <-chan events.Message {
+func (e *Engine) Receive() <-chan events.ClientMessage {
 	return e.messages
 }

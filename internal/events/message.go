@@ -4,16 +4,20 @@ import (
 	"strings"
 )
 
+const whitespace = " \t"
+
+var sanitizer = strings.NewReplacer("\r", " ", "\n", " ")
+
 type Message struct {
-	Origin  *Client
 	Raw     string
 	Command Command
 	Args    []string
 }
 
-const whitespace = " \t"
-
-var sanitizer = strings.NewReplacer("\r", " ", "\n", " ")
+type ClientMessage struct {
+	Message
+	Origin *Client
+}
 
 func popArg(text string) (string, string) {
 	if i := strings.IndexAny(text, whitespace); i >= 0 {
@@ -46,16 +50,17 @@ func NewMessageFromRaw(raw string) Message {
 	}
 }
 
-func NewMessageFromClient(raw string, client *Client) Message {
-	msg := NewMessageFromRaw(raw)
-	msg.Origin = client
-	return msg
+func NewMessageFromClient(raw string, client *Client) ClientMessage {
+	return ClientMessage{
+		Message: NewMessageFromRaw(raw),
+		Origin:  client,
+	}
 }
 
 func NewOutboundMessage(cmd Command, args ...string) Message {
 	raw := string(cmd) + " " + sanitizer.Replace(strings.Join(args, " "))
 	return Message{
-		Raw:     raw,
+		Raw:     strings.TrimSpace(raw),
 		Command: cmd,
 		Args:    args,
 	}
@@ -172,8 +177,8 @@ func ReportChannelsMessage(channels []string) Message {
 	return NewOutboundMessage(ReportChannelsCommand, strings.Join(channels, " "))
 }
 
-func ReportUsersMessage(users []string) Message {
-	return NewOutboundMessage(ReportUsersCommand, strings.Join(users, " "))
+func ReportUsersMessage(channel string, users []string) Message {
+	return NewOutboundMessage(ReportUsersCommand, channel, strings.Join(users, " "))
 }
 
 func BuddyListMessage(buddies []string) Message {

@@ -1,13 +1,14 @@
 package server
 
 import (
-	"context"
+	"errors"
 	"fmt"
 	"log"
 	"maxim/internal/events"
 	"maxim/internal/models"
+	"maxim/internal/utils"
+	"slices"
 	"strings"
-	"time"
 )
 
 /* TODO implement:
@@ -31,221 +32,282 @@ ADVERT_TIME
 ADVERT_IMAGE
 */
 
-type commandHandler func(*Server, events.Message, context.Context)
+type commandHandler func(*Server, events.ClientMessage, *commandContext)
 
 var handlers = map[events.Command]commandHandler{
-	events.LoginCommand:    login,
-	events.PingCommand:     ping,
-	events.RegisterCommand: register,
-	events.QuitCommand:     quit,
-
-	events.SayCommand:           needsChannel(say),
-	events.ChatCommand:          needsLoggedIn(chat),
-	events.DirectMessageCommand: needsLoggedIn(directMessage),
-	events.JoinCommand:          needsLoggedIn(join),
-	events.CreateChannelCommand: needsLoggedIn(create),
-	events.WhoisCommand:         needsLoggedIn(whois),
-	events.NewDetailsCommand:    needsLoggedIn(newDetails),
-	events.BuddyCommand:         needsLoggedIn(buddy),
-	events.IgnoreCommand:        needsLoggedIn(ignore),
-	events.ReportCommand:        needsLoggedIn(report),
-
+	events.LoginCommand:          login,
+	events.PingCommand:           ping,
+	events.RegisterCommand:       register,
+	events.QuitCommand:           quit,
+	events.SayCommand:            needsChannel(say),
+	events.ChatCommand:           needsLoggedIn(chat),
+	events.DirectMessageCommand:  needsLoggedIn(directMessage),
+	events.JoinCommand:           needsLoggedIn(join),
+	events.CreateChannelCommand:  needsLoggedIn(create),
+	events.WhoisCommand:          needsLoggedIn(whois),
+	events.NewDetailsCommand:     needsLoggedIn(newDetails),
+	events.BuddyCommand:          needsLoggedIn(buddy),
+	events.IgnoreCommand:         needsLoggedIn(ignore),
+	events.ReportCommand:         needsLoggedIn(report),
 	events.PongCommand:           noop,
 	events.ClientProtocolCommand: noop,
 	events.ClientTypeCommand:     noop,
 }
 
-func login(server *Server, msg events.Message, ctx context.Context) {
-	if len(msg.Args) != 2 {
-		msg.Origin.Send(events.LoginFailedMessage("Wrong number of arguments."))
+func login(server *Server, msg events.ClientMessage, ctx *commandContext) {
+	if len(msg.Args) != 2 || len(msg.Args[1]) > 256 {
+		authError(msg.Origin, msg.Command, "Wrong number of arguments or invalid password length.")
 		return
 	}
 
-	start := time.Now()
-	end := start.Add(1 * time.Second)
-
-	if msg.Origin.Username != "" {
-		msg.Origin.Send(events.LoginFailedMessage("You are already logged in."))
+	if ctx.session.username != "" {
+		authError(msg.Origin, msg.Command, "You are already logged in.")
 		return
 	}
 
-	username := msg.Args[0]
-	password := msg.Args[1]
-	user, ok := server.Users.Get(username)
-	if ok {
-		err := server.Hash.Compare(user.Password, []byte(password))
-		if err == nil {
-			msg.Origin.Username = username
-			msg.Origin.Send(events.LoginOkMessage())
-			sendStatusToBuddies(server, user, events.BuddyStatusOnline)
-			return
+	user, ok := server.Users.Get(msg.Args[0])
+	password := []byte(msg.Args[1])
+	server.startAuth(msg, ctx, func() (*models.User, error) {
+		if !ok {
+			// still compute hash to mitigate user listing attacks
+			_, _ = server.Hash.GenerateHash(password)
+			return nil, utils.ErrPasswordMismatch
 		}
-		log.Printf("Error generating hash for user %s: %v", username, err)
-	}
-
-	select {
-	case <-time.After(time.Until(end)):
-		msg.Origin.Send(events.LoginFailedMessage("Wrong username or password."))
-	case <-ctx.Done():
-		break
-	}
+		if err := server.Hash.Compare(user.Password, password); err != nil {
+			return nil, utils.ErrPasswordMismatch
+		}
+		return user, nil
+	})
 }
 
-func register(server *Server, msg events.Message, _ context.Context) {
+func register(server *Server, msg events.ClientMessage, ctx *commandContext) {
 	if len(msg.Args) != 9 {
 		msg.Origin.Send(events.RegisterFailedMessage("Wrong number of arguments."))
 		return
 	}
 
-	if msg.Origin.Username != "" {
+	if ctx.session.username != "" {
 		msg.Origin.Send(events.RegisterFailedMessage("You are already logged in."))
 		return
 	}
 
 	username := msg.Args[0]
-	if !validateUsername(username, 32) {
+	if !validateName(username, 32) {
 		msg.Origin.Send(events.RegisterFailedMessage("Invalid username."))
 		return
 	}
+
 	if _, ok := server.Users.Get(username); ok {
 		msg.Origin.Send(events.RegisterFailedMessage("Another user with this username already exists."))
 		return
 	}
 
-	err := processUserDetails(username, server, msg.Args[1:])
+	details, err := parseUserDetails(msg.Args[1:])
 	if err != nil {
 		msg.Origin.Send(events.RegisterFailedMessage(err.Error()))
 		return
 	}
-	msg.Origin.Username = username
-	msg.Origin.Send(events.RegisterOkMessage())
-	return
+	password := []byte(msg.Args[1])
+	server.startAuth(msg, ctx, func() (*models.User, error) {
+		hash, err := server.Hash.GenerateHash(password)
+		if err != nil {
+			return nil, errors.New("could not process password")
+		}
+		return &models.User{
+			Username: username,
+			Password: *hash,
+			Details:  details,
+		}, nil
+	})
 }
 
-func quit(_ *Server, msg events.Message, _ context.Context) { _ = msg.Origin.Close() }
+func quit(_ *Server, msg events.ClientMessage, _ *commandContext) { _ = msg.Origin.Close() }
 
-func ping(_ *Server, msg events.Message, _ context.Context) {
+func ping(_ *Server, msg events.ClientMessage, _ *commandContext) {
 	msg.Origin.Send(events.PongMessage())
 }
 
-func say(server *Server, msg events.Message, ctx context.Context) {
-	user := extractUserFromContext(ctx)
-	BroadcastToChannel(msg.Origin.Username, server, user.ActiveChannel, FormatChannelMessage(
-		user.ActiveChannel.Name,
-		user.Username,
-		strings.Join(msg.Args, " "),
-	))
+func say(server *Server, msg events.ClientMessage, ctx *commandContext) {
+	if len(msg.Args) != 1 || strings.TrimSpace(msg.Args[0]) == "" {
+		// do not send an error since it's easy to accidentally press enter with an empty message
+		return
+	}
+
+	channel, ok := server.Channels.Get(ctx.session.channelName)
+	if !ok {
+		log.Println("Could not find channel", ctx.session.channelName)
+		msg.Origin.Send(events.ServerErrMessage("Failed to send message."))
+		return
+	}
+	broadcastToChannel(
+		server,
+		channel,
+		ctx.user.Username,
+		FormatChannelMessage(ctx.session.channelName, ctx.user.Username, msg.Args[0]),
+	)
 }
 
-func chat(server *Server, msg events.Message, ctx context.Context) {
-	channels := server.Channels.GetAll()
-	chanNames := make([]string, 0, len(channels))
-	for _, channel := range channels {
-		chanNames = append(chanNames, channel.Name)
+func listFromNames(items map[string]bool) []string {
+	names := make([]string, 0, len(items))
+	for name := range items {
+		names = append(names, name)
 	}
-	msg.Origin.Send(events.ReportChannelsMessage(chanNames))
-
-	user := extractUserFromContext(ctx)
-	buddies := make([]string, 0, len(user.Buddies))
-	for buddy := range user.Buddies {
-		buddies = append(buddies, buddy)
-	}
-	msg.Origin.Send(events.BuddyListMessage(buddies))
-
-	ignoredUsers := make([]string, 0, len(user.Ignored))
-	for ignored := range user.Ignored {
-		ignoredUsers = append(ignoredUsers, ignored)
-	}
-	msg.Origin.Send(events.IgnoreListMessage(ignoredUsers))
+	slices.Sort(names)
+	return names
 }
 
-func join(server *Server, msg events.Message, ctx context.Context) {
-	user := extractUserFromContext(ctx)
+func chat(server *Server, msg events.ClientMessage, ctx *commandContext) {
+	channels, err := server.Channels.List()
+	if err != nil {
+		log.Println("Error listing channels:", err)
+		msg.Origin.Send(events.ServerErrMessage("Error listing channels."))
+		channels = []string{}
+	}
+	slices.Sort(channels)
+	msg.Origin.Send(events.ReportChannelsMessage(channels))
+	msg.Origin.Send(events.BuddyListMessage(listFromNames(ctx.user.Buddies)))
+	msg.Origin.Send(events.IgnoreListMessage(listFromNames(ctx.user.Ignored)))
+
+	if ctx.session.channelName != "" {
+		channel, ok := server.Channels.Get(ctx.session.channelName)
+		if !ok {
+			log.Println("Error getting channel:", ctx.session.channelName)
+			msg.Origin.Send(events.ServerErrMessage("Error getting user list."))
+			return
+		}
+		msg.Origin.Send(events.ReportUsersMessage(ctx.session.channelName, listFromNames(channel.Members)))
+	}
+}
+
+func join(server *Server, msg events.ClientMessage, ctx *commandContext) {
 	if len(msg.Args) < 1 {
 		// TODO: do not do if the originator doesn't live on the server?
 		msg.Origin.Send(events.ServerErrMessage("Missing channel name."))
 		return
 	}
-	channelName := msg.Args[0]
-	channel, ok := server.Channels.Get(channelName)
+	channel, ok := server.Channels.Get(msg.Args[0])
 	if !ok {
 		msg.Origin.Send(events.ServerErrMessage("Channel not found."))
 		return
 	}
-	if user.ActiveChannel != nil {
-		delete(user.ActiveChannel.Members, user.Username)
-		AnnounceLeftChannel(server, user.ActiveChannel, user.Username)
+	if ctx.session.channelName == channel.Name {
+		msg.Origin.Send(events.ServerErrMessage("You already are in this channel."))
+		return
 	}
-	user.ActiveChannel = channel
-	AnnounceJoinedChannel(server, user.ActiveChannel, user.Username)
-	channel.Members[user.Username] = true
-	users := make([]string, 0, len(channel.Members))
-	for s := range channel.Members {
-		users = append(users, s)
+
+	if ctx.session.channelName != "" {
+		oldChannel, ok := server.Channels.Get(msg.Args[0])
+		if !ok {
+			return
+		}
+		delete(oldChannel.Members, ctx.user.Username)
+		err := server.Channels.Update(oldChannel)
+		if err != nil {
+			log.Println("Failed to update channel.", err)
+			msg.Origin.Send(events.ServerErrMessage("Error while leaving channel."))
+			oldChannel.Members[ctx.user.Username] = true
+			return
+		}
+		AnnounceLeftChannel(server, oldChannel, ctx.user.Username)
+		ctx.session.channelName = ""
 	}
-	msg.Origin.Send(events.ReportUsersMessage(users))
-	msg.Origin.Send(events.ServerMessage(fmt.Sprintf("Joined channel %s.", channelName)))
+	channel.Members[ctx.user.Username] = true
+	err := server.Channels.Update(channel)
+	if err != nil {
+		log.Println("Failed to update channel.", err)
+		msg.Origin.Send(events.ServerErrMessage("Error while joining channel."))
+		delete(channel.Members, ctx.user.Username)
+		msg.Origin.Send(events.ServerMessage("Left channel"))
+		return
+	}
+
+	ctx.session.channelName = channel.Name
+	AnnounceJoinedChannel(server, channel, ctx.user.Username)
+	msg.Origin.Send(events.ReportUsersMessage(channel.Name, listFromNames(channel.Members)))
 }
 
-func create(server *Server, msg events.Message, _ context.Context) {
+func create(server *Server, msg events.ClientMessage, _ *commandContext) {
 	if len(msg.Args) < 1 {
 		msg.Origin.Send(events.ServerErrMessage("Missing channel name."))
 		return
 	}
-	channelName := msg.Args[0]
-	_, ok := server.Channels.Get(channelName)
+
+	channels, err := server.Channels.List()
+	if err != nil {
+		log.Println("Failed to create channel", err)
+		msg.Origin.Send(events.ServerErrMessage("Failed to create channel."))
+		return
+	}
+	if len(channels) >= 256 {
+		msg.Origin.Send(events.ServerErrMessage("Channel limit reached."))
+		return
+	}
+
+	name := msg.Args[0]
+	if !strings.HasPrefix(name, "#") {
+		name = "#" + name
+	}
+
+	_, ok := server.Channels.Get(name)
 	if ok {
 		msg.Origin.Send(events.ServerErrMessage("Channel already exists."))
 		return
 	}
 
-	if !strings.HasPrefix(channelName, "#") {
+	if !validateName(strings.TrimPrefix(name, "#"), 63) {
 		msg.Origin.Send(events.ServerErrMessage("Channel name must start with '#'."))
 		return
 	}
 
-	server.Channels.Add(channelName, models.NewChannel(channelName))
-	msg.Origin.Send(events.ServerMessage(fmt.Sprintf("Created channel: %s", channelName)))
-	for c := range server.Clients {
-		c.Send(events.ChannelAddedMessage(channelName))
+	err = server.Channels.Create(models.NewChannel(name))
+	if err != nil {
+		log.Println("Failed to create channel", err)
+		msg.Origin.Send(events.ServerErrMessage("Failed to create channel."))
+		return
+	}
+	msg.Origin.Send(events.ServerMessage(fmt.Sprintf("Created channel: %s", name)))
+	for _, sess := range server.online {
+		sess.client.Send(events.ChannelAddedMessage(name))
 	}
 }
 
-func directMessage(server *Server, msg events.Message, ctx context.Context) {
+func directMessage(server *Server, msg events.ClientMessage, ctx *commandContext) {
 	if len(msg.Args) < 2 {
-		msg.Origin.Send(events.ServerErrMessage("Wrong number of arguments."))
+		msg.Origin.Send(events.ServerErrMessage("Expected a username."))
 		return
 	}
-	user := extractUserFromContext(ctx)
-	userName := msg.Args[0]
-	message := strings.Join(msg.Args[1:], " ")
-	target, ok := server.Users.Get(userName)
+	if strings.TrimSpace(msg.Args[1]) == "" {
+		// do not send an error since it's easy to accidentally press enter with an empty message
+		return
+	}
+
+	target, ok := server.Users.Get(msg.Args[0])
 	if !ok {
 		msg.Origin.Send(events.ServerErrMessage("User not found."))
 		return
 	}
-	if _, ignored := user.Ignored[target.Username]; ignored {
+
+	if ctx.user.Ignored[target.Username] {
 		msg.Origin.Send(events.ServerErrMessage("User is ignored."))
 		return
 	}
 
-	msg.Origin.Send(FormatWhisperSender(target.Username, message))
+	msg.Origin.Send(FormatWhisperSender(target.Username, msg.Args[1]))
 
-	if _, ignored := target.Ignored[user.Username]; ignored {
+	targetSession, online := server.online[target.Username]
+	if !online || targetSession.client.IsClosed() {
+		msg.Origin.Send(events.ServerErrMessage("User is offline."))
 		return
 	}
-	// FIXME: this is highly inefficient
-	//  maybe keep a map of username->conn in server?
-	for client := range server.Clients {
-		if client.Username == target.Username {
-			client.Send(FormatWhisperTarget(user.Username, message))
-		}
+	if target.Ignored[target.Username] {
+		return
 	}
+	targetSession.client.Send(FormatWhisperTarget(ctx.user.Username, msg.Args[1]))
 }
 
-func whois(server *Server, msg events.Message, _ context.Context) {
+func whois(server *Server, msg events.ClientMessage, _ *commandContext) {
 	if len(msg.Args) < 1 {
-		msg.Origin.Send(events.ServerErrMessage("Missing user name."))
+		msg.Origin.Send(events.ServerErrMessage("Expected a username."))
 		return
 	}
 	user, ok := server.Users.Get(msg.Args[0])
@@ -257,51 +319,68 @@ func whois(server *Server, msg events.Message, _ context.Context) {
 	msg.Origin.Send(FormatWhoisAnswer(user))
 }
 
-func newDetails(server *Server, msg events.Message, ctx context.Context) {
-	if len(msg.Args) != 9 {
-		msg.Origin.Send(events.ServerErrMessage("Wrong number of arguments."))
-		return
-	}
-	user := extractUserFromContext(ctx)
-	// TODO: Implement avatar management
-	err := processUserDetails(user.Username, server, msg.Args)
+func newDetails(server *Server, msg events.ClientMessage, ctx *commandContext) {
+	details, err := parseUserDetails(msg.Args)
 	if err != nil {
-		msg.Origin.Send(events.ServerErrMessage(err.Error()))
+		authError(msg.Origin, msg.Command, err.Error())
 		return
 	}
-	msg.Origin.Send(events.UserDetailsMessage(user.Username, msg.Args))
-	msg.Origin.Send(events.NewDetailsOkMessage())
+	username := ctx.user.Username
+	password := []byte(msg.Args[0])
+	server.startAuth(msg, ctx, func() (*models.User, error) {
+		hash, err := server.Hash.GenerateHash(password)
+		if err != nil {
+			return nil, errors.New("could not process password")
+		}
+		return &models.User{
+			Username: username,
+			Password: *hash,
+			Details:  details,
+		}, nil
+	})
 }
 
-func buddy(server *Server, msg events.Message, ctx context.Context) {
+func buddy(server *Server, msg events.ClientMessage, ctx *commandContext) {
 	if len(msg.Args) < 2 {
-		msg.Origin.Send(events.ServerErrMessage("Wrong number of arguments."))
+		msg.Origin.Send(events.ServerErrMessage("Expected an operation and a username."))
 		return
 	}
 
-	if _, ok := server.Users.Get(msg.Args[1]); !ok {
+	target := msg.Args[1]
+	if _, ok := server.Users.Get(target); !ok {
 		msg.Origin.Send(events.ServerErrMessage("User not found."))
 		return
 	}
-
-	user := extractUserFromContext(ctx)
-	target := msg.Args[1]
-
+	if target == ctx.user.Username {
+		msg.Origin.Send(events.ServerErrMessage("Cannot add yourself as a buddy."))
+		return
+	}
 	switch strings.ToUpper(msg.Args[0]) {
 	case "ADD":
-		if _, ok := user.Buddies[target]; ok {
+		if ctx.user.Buddies[target] {
 			msg.Origin.Send(events.ServerErrMessage("User is already your buddy."))
 			return
 		}
-		user.Buddies[target] = true
+		if len(ctx.user.Buddies) >= 128 {
+			msg.Origin.Send(events.ServerErrMessage("Buddy limit reached."))
+			return
+		}
+		ctx.user.Buddies[target] = true
+		if !saveUser(server, msg, ctx.user) {
+			return
+		}
 		msg.Origin.Send(events.BuddyAddMessage(target))
+		msg.Origin.Send(events.BuddyStatusMessage(target, buddyStatus(server, target)))
 		msg.Origin.Send(events.ServerMessage(fmt.Sprintf("%s is now your buddy!", target)))
 	case "REMOVE":
-		if _, ok := user.Buddies[target]; !ok {
+		if !ctx.user.Buddies[target] {
 			msg.Origin.Send(events.ServerErrMessage("User is not your buddy."))
 			return
 		}
-		delete(user.Buddies, target)
+		delete(ctx.user.Buddies, target)
+		if !saveUser(server, msg, ctx.user) {
+			return
+		}
 		msg.Origin.Send(events.BuddyRemoveMessage(target))
 		msg.Origin.Send(events.ServerMessage(fmt.Sprintf("%s is not your buddy anymore :(", target)))
 	default:
@@ -309,35 +388,46 @@ func buddy(server *Server, msg events.Message, ctx context.Context) {
 	}
 }
 
-func ignore(server *Server, msg events.Message, ctx context.Context) {
+func ignore(server *Server, msg events.ClientMessage, ctx *commandContext) {
 	if len(msg.Args) < 2 {
-		msg.Origin.Send(events.ServerErrMessage("Wrong number of arguments."))
+		msg.Origin.Send(events.ServerErrMessage("Expected an operation and a username."))
 		return
 	}
 
-	if _, ok := server.Users.Get(msg.Args[1]); !ok {
+	target := msg.Args[1]
+	if _, exists := server.Users.Get(target); !exists {
 		msg.Origin.Send(events.ServerErrMessage("User not found."))
 		return
 	}
-
-	user := extractUserFromContext(ctx)
-	target := msg.Args[1]
-
+	if target == ctx.user.Username {
+		msg.Origin.Send(events.ServerErrMessage("Cannot ignore yourself."))
+		return
+	}
 	switch strings.ToUpper(msg.Args[0]) {
 	case "ADD":
-		if _, ok := user.Ignored[target]; ok {
+		if ctx.user.Ignored[target] {
 			msg.Origin.Send(events.ServerErrMessage("User is already ignored."))
 			return
 		}
-		user.Ignored[target] = true
+		if len(ctx.user.Ignored) >= 128 {
+			msg.Origin.Send(events.ServerErrMessage("Ignore limit reached."))
+			return
+		}
+		ctx.user.Ignored[target] = true
+		if !saveUser(server, msg, ctx.user) {
+			return
+		}
 		msg.Origin.Send(events.IgnoreAddMessage(target))
 		msg.Origin.Send(events.ServerMessage(fmt.Sprintf("%s is now ignored.", target)))
 	case "REMOVE":
-		if _, ok := user.Ignored[target]; !ok {
+		if !ctx.user.Ignored[target] {
 			msg.Origin.Send(events.ServerErrMessage("User is not ignored."))
 			return
 		}
-		delete(user.Ignored, target)
+		delete(ctx.user.Ignored, target)
+		if !saveUser(server, msg, ctx.user) {
+			return
+		}
 		msg.Origin.Send(events.IgnoreRemoveMessage(target))
 		msg.Origin.Send(events.ServerMessage(fmt.Sprintf("%s is not ignored anymore.", target)))
 	default:
@@ -345,12 +435,12 @@ func ignore(server *Server, msg events.Message, ctx context.Context) {
 	}
 }
 
-func report(_ *Server, msg events.Message, _ context.Context) {
-	if len(msg.Args) < 1 {
-		msg.Origin.Send(events.ServerErrMessage("Wrong number of arguments."))
+func report(_ *Server, msg events.ClientMessage, ctx *commandContext) {
+	if len(msg.Args) != 1 {
+		msg.Origin.Send(events.ServerErrMessage("Expected one username."))
 		return
 	}
 
-	log.Printf("REPORT: User `%s` reported `%s`\n", msg.Origin.Username, msg.Args[0])
+	log.Printf("REPORT: user %q reported %q", ctx.user.Username, msg.Args[0])
 	msg.Origin.Send(events.ServerMessage(fmt.Sprintf("%s successfully reported.", msg.Args[0])))
 }

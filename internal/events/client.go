@@ -16,7 +16,6 @@ import (
 const MaxLineSize = 4096
 
 type Client struct {
-	Username   string
 	conn       net.Conn
 	outbound   chan Message
 	disconnect chan<- *Client

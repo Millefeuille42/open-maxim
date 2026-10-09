@@ -1,6 +1,6 @@
 # open-maxim
 
-This is project is dedicated to reimplement the MaxIM Instant Messenger servers initially provided by Datel as their original servers are now permanently offline.
+This project is dedicated to reimplement the MaxIM Instant Messenger servers initially provided by Datel as their original servers are now permanently offline.
 
 First objective is to (try to at least) provide 100% functionality on the server, and later expand it and
 integrate it to other chat platforms and protocols like IRC and Matrix.
