@@ -42,8 +42,10 @@ func main() {
 			log.Fatal(fmt.Errorf("create development users: %w", err))
 		}
 	}
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
+	defer stop()
 	err := s.Run(ctx)
 	if err != nil {
-		log.Fatal(err)
+		log.Println(err)
 	}
 }
