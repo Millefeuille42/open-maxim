@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"flag"
+	"fmt"
 	"log"
 	"maxim/internal/models"
 	"maxim/internal/server"
@@ -10,45 +12,36 @@ import (
 	"syscall"
 )
 
-var dummyUser = models.User{
-	Username: "dummy",
-	Buddies:  make(map[string]bool),
-	Ignored:  make(map[string]bool),
-}
-
-var testUser = models.User{
-	Username: "test",
-	Buddies:  make(map[string]bool),
-	Ignored:  make(map[string]bool),
-}
-
-func addTestUsers(s *server.Server) {
-	for _, user := range []*models.User{&dummyUser, &testUser} {
+func addTestUsers(s *server.Server) error {
+	for _, username := range []string{"dummy", "test"} {
 		hash, err := s.Hash.GenerateHash([]byte("password"))
 		if err != nil {
-			log.Fatal(err)
+			return err
 		}
-		user.Password = *hash
-		if err = s.Users.Create(user); err != nil {
-			log.Fatal(err)
+		err = s.Users.Create(&models.User{
+			Username: username,
+			Password: *hash,
+		})
+		if err != nil {
+			return err
 		}
 	}
+	return nil
 }
 
 func main() {
-	// TODO add argument parsing?
-	s := server.NewServer(2002)
-	ctx, cancel := context.WithCancel(context.Background())
-	// TODO make this happen in dev mode only
-	addTestUsers(s)
-
-	go func() {
-		sig := make(chan os.Signal, 1)
-		signal.Notify(sig, syscall.SIGINT, syscall.SIGTERM, os.Interrupt)
-		<-sig
-		log.Println("Shutdown signal received, initiating graceful shutdown...")
-		cancel()
-	}()
+	port := flag.Int("port", 2002, "TCP port")
+	dev := flag.Bool("dev", false, "create dummy and test accounts with password 'password'")
+	flag.Parse()
+	if *port < 1 || *port > 65535 {
+		log.Fatal("port must be between 1 and 65535")
+	}
+	s := server.NewServer(*port)
+	if *dev {
+		if err := addTestUsers(s); err != nil {
+			log.Fatal(fmt.Errorf("create development users: %w", err))
+		}
+	}
 	err := s.Run(ctx)
 	if err != nil {
 		log.Fatal(err)
