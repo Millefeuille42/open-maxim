@@ -38,7 +38,7 @@ Status Legend:
 | `IGNORE_DEL`      | S -> C  | `<user:str>`                                    | (None)                                       |   🟢   | TODO       |
 | `BUDDY_ADD`       | S -> C  | `<user:str>`                                    | (None)                                       |   🟢   | TODO       |
 | `BUDDY_DEL`       | S -> C  | `<user:str>`                                    | (None)                                       |   🟢   | TODO       |
-| `BUDDY_STATUS`    | S -> C  | `<user:str> <status:str:+->`                    | `?`                                          |   🟢   | TODO       |
+| `BUDDY_STATUS`    | S -> C  | `<user:str> <status:str:+->`                    | (None)                                       |   🟢   | TODO       |
 | `USER_MSG`        | S -> C  | `<msg:str>`                                     | (None)                                       |   🟢   | TODO       |
 | `USER_JOIN`       | S -> C  | `<user:str>`                                    | (None)                                       |   🟢   | TODO       |
 | `USER_LEAVE`      | S -> C  | `<user:str>`                                    | (None)                                       |   🟢   | TODO       |
