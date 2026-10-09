@@ -16,7 +16,7 @@ docker-build:
 	docker build -t $(APP_NAME):latest .
 
 docker-run:
-	docker-compose up -d
+	docker run --rm -ti -p8080:8080 -p2002:2002 $(APP_NAME):latest
 
 ./bin/golangci-lint:
 	curl -sSfL https://golangci-lint.run/install.sh | sh -s v2.14.0

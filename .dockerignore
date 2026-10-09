@@ -1,0 +1,16 @@
+*.gpr
+*.rep/
+*.lock
+*.lock~
+dumps/
+.idea/
+.vscode/
+bin/
+.git
+.gitignore
+LICENSE
+readme.md
+Makefile
+docs/
+pcap
+scripts/
