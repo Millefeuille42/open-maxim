@@ -58,8 +58,10 @@ func NewStore[T models.Clonable[T]]() *Store[T] {
 	}
 }
 
-type UserStore = Store[*models.User]
-type ChannelStore = Store[*models.Channel]
+type (
+	UserStore    = Store[*models.User]
+	ChannelStore = Store[*models.Channel]
+)
 
 func NewUserStore() *UserStore {
 	return NewStore[*models.User]()

@@ -68,11 +68,14 @@ func NewServer(port int) *Server {
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	listener, err := net.Listen("tcp", fmt.Sprintf(":%d", s.Port))
+	var lc net.ListenConfig
+	listener, err := lc.Listen(ctx, "tcp", fmt.Sprintf(":%d", s.Port))
 	if err != nil {
 		return err
 	}
-	defer listener.Close()
+	defer func() {
+		_ = listener.Close()
+	}()
 	return s.Serve(ctx, listener)
 }
 

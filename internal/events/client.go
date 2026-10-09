@@ -73,7 +73,7 @@ func (c *Client) Send(msg Message) {
 	case <-c.done:
 	case c.outbound <- msg:
 	default:
-		c.Close()
+		_ = c.Close()
 	}
 }
 
@@ -118,7 +118,9 @@ func (c *Client) Run(ctx context.Context, commands Engine) {
 }
 
 func (c *Client) writeLoop(ctx context.Context) error {
-	defer c.Close()
+	defer func() {
+		_ = c.Close()
+	}()
 
 	for {
 		select {
@@ -145,7 +147,9 @@ func (c *Client) writeLoop(ctx context.Context) error {
 }
 
 func (c *Client) readLoop(ctx context.Context, commands Engine) error {
-	defer c.Close()
+	defer func() {
+		_ = c.Close()
+	}()
 
 	reader := bufio.NewReaderSize(c.conn, MaxLineSize+2)
 	for {

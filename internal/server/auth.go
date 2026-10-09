@@ -67,7 +67,8 @@ func (s *Server) startAuth(msg events.ClientMessage, ctx *commandContext, work f
 		}()
 
 		user, err := work()
-		result := authResult{client: msg.Origin,
+		result := authResult{
+			client:  msg.Origin,
 			command: msg.Command,
 			user:    user,
 			err:     err,

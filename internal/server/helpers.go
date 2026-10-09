@@ -25,7 +25,7 @@ func newCommandContext(ctx context.Context, sess *session) *commandContext {
 }
 
 func validateName(name string, max int) bool {
-	if len(name) <= 0 || len(name) > max {
+	if len(name) == 0 || len(name) > max {
 		return false
 	}
 

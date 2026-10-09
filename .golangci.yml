@@ -1,0 +1,48 @@
+version: "2"
+
+linters:
+  disable-all: true
+  enable:
+    - errcheck
+    - govet
+    - staticcheck
+    - unused
+    - ineffassign
+    - gosec
+    - bodyclose
+    - sqlclosecheck
+    - errorlint
+    - nilerr
+    - fatcontext
+    - noctx
+    - revive
+    - gocritic
+    - modernize
+    - nolintlint
+    - unconvert
+    - copyloopvar
+    - thelper
+    - testifylint
+    - sloglint
+  settings:
+    revive:
+      rules:
+        - name: exported
+          disabled: true
+        - name: package-comments
+          disabled: true
+
+formatters:
+  enable:
+    - gofmt
+    - gofumpt
+    - goimports
+  exclusions:
+    warn-unused: true
+    generated: strict
+
+issues:
+  max-issues-per-linter: 0
+  max-same-issues: 0
+
+
