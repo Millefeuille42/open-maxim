@@ -45,9 +45,9 @@ func addTestUsers(s *server.Server) error {
 func handleConfig(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	body := fmt.Sprintf(""+
-		"chat_server=%s\n"+
-		"chat_port=%d\n"+
-		"advert_url=%s\n",
+		"chat_server=%s\r\n"+
+		"chat_port=%d\r\n"+
+		"advert_url=%s\r\n",
 		Config.chatAddr, Config.chatPort, Config.advertAddr,
 	)
 	_, err := w.Write([]byte(body))
