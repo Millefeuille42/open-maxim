@@ -1,5 +1,5 @@
 [ADVERT]
-	ADVERT_IMAGE=http://192.168.1.157/big.png
+	ADVERT_IMAGE=http://<your-ip>/big.png
 
 	ADVERT_TIME=250
 
