@@ -26,11 +26,27 @@ You can now register, log in and chat, the forum section is yet to be implemente
 
 ### PCSX2
 
-The most stable way I found for networking is to use the `Sockets` network mode. This didn't work for my Linux PC
-but did will on a MacBook. When testing, we'd be happy if you provide us the hardware, emulator, BIOS and MaxIM version
-you are using.
+On PCSX2, you will need to enable one of the "Bypass MAC address check" patches
+to make sure networking works properly. Please check the
+[`patches/`](./patches/) directory for more information.
 
-We are currently investigating for a stable way for networking to work on all hardware.
+In the "Network & HDD" settings of the emulator, configure the options as
+follows:
+
+- Enabled: checked
+- Ethernet Device Type: Sockets
+- Ethernet Device: Auto
+- Intercept DHCP tab:
+    - DNS1 Address: select Internal
+    - DNS2 Address: select Auto
+- Internal DNS tab, add a row with the following:
+    - Name: Datel
+    - Url: `www.datelversions.com`
+    - Address: `141.145.193.112`, or the IP address of your custom server
+    - Enabled: checked
+
+When testing, we'd be happy if you provide us the hardware, emulator, BIOS and
+MaxIM version you are using.
 
 ## Contributing
 

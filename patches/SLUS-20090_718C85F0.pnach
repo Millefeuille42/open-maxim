@@ -1,0 +1,16 @@
+gametitle=Maxim - Instant Messenger (USA) (Unl)
+
+[Bypass MAC address check (Fast boot)]
+description=Forces the MAC address checksum verification to pass during MaxIM startup (with fast boot enabled).
+author=Kuruyia
+patch=1,IOP,000A0FAC,word,00000000
+
+[Bypass MAC address check (No fast boot - BIOS 0190a 20030623)]
+description=Forces the MAC address checksum verification to pass during MaxIM startup (with fast boot disabled, BIOS USA v01.90 23/06/2003).
+author=Kuruyia
+patch=1,IOP,000A56AC,word,00000000
+
+[Bypass MAC address check (No fast boot - BIOS 0160a 20020207)]
+description=Forces the MAC address checksum verification to pass during MaxIM startup (with fast boot disabled, BIOS USA v01.60 07/02/2002).
+author=Kuruyia
+patch=1,IOP,000A46AC,word,00000000
