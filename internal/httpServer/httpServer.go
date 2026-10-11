@@ -33,9 +33,9 @@ func handleServeFile(path string, fileType string) httpHandler {
 func handleAdvert(w http.ResponseWriter, _ *http.Request) {
 	w.Header().Set("Content-Type", "text/plain")
 	body := fmt.Sprintf(""+
-		"big_advert=%s\r\n"+
-		"banner_advert=%s\r\n",
-		"http://192.168.1.157/big.txt", "http://192.168.1.157/banner.txt",
+		"big_advert=%s/big.txt\r\n"+
+		"banner_advert=%s/banner.txt\r\n",
+		config.CONFIG.AdvertAddr, config.CONFIG.AdvertAddr,
 	)
 	_, err := w.Write([]byte(body))
 	if err != nil {
@@ -50,7 +50,7 @@ func handleConfig(w http.ResponseWriter, _ *http.Request) {
 	body := fmt.Sprintf(""+
 		"chat_server=%s\r\n"+
 		"chat_port=%d\r\n"+
-		"advert_url=%s\r\n",
+		"advert_url=%s/advert?\r\n",
 		config.CONFIG.ChatAddr, config.CONFIG.ChatPort, config.CONFIG.AdvertAddr,
 	)
 	_, err := w.Write([]byte(body))

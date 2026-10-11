@@ -44,14 +44,14 @@ func GetConfig() Config {
 		httpPort = "80"
 	}
 
-	chatAddr := os.Getenv("MAXIM_CHAT_ADDR")
+	chatAddr := os.Getenv("MAXIM_CHAT_IP")
 	if chatAddr == "" {
 		chatAddr = "localhost"
 	}
 
 	advertAddr := os.Getenv("MAXIM_ADVERT_ADDR")
 	if advertAddr == "" {
-		advertAddr = "http://localhost/advert?"
+		advertAddr = "http://localhost"
 	}
 
 	bannerTextPath := os.Getenv("MAXIM_BANNER_TEXT_PATH")
