@@ -46,12 +46,12 @@ func GetConfig() Config {
 
 	chatAddr := os.Getenv("MAXIM_CHAT_ADDR")
 	if chatAddr == "" {
-		chatAddr = "192.168.1.157"
+		chatAddr = "localhost"
 	}
 
 	advertAddr := os.Getenv("MAXIM_ADVERT_ADDR")
 	if advertAddr == "" {
-		advertAddr = "http://192.168.1.157/advert?"
+		advertAddr = "http://localhost/advert?"
 	}
 
 	bannerTextPath := os.Getenv("MAXIM_BANNER_TEXT_PATH")
